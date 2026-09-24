@@ -1,0 +1,3459 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conta Marlene - Control Tributario F29 & Alertas</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS for Excel & CSV reading -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js for interactive historical graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            accent: {
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              coral: '#f43f5e',
+              teal: '#14b8a6',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar and smooth transitions */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .badge-pulse { animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    /* Estilos profesionales para impresión y generación de PDF */
+    @media print {
+      body * { visibility: hidden !important; }
+      #printable-section, #printable-section * { visibility: visible !important; }
+      #printable-section {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        background: white !important;
+        color: #0f172a !important;
+        padding: 20px !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-lg sticky top-0 z-40 border-b border-indigo-800/40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        
+        <!-- Brand / Logo -->
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-400 to-indigo-500 flex items-center justify-center shadow-md shadow-indigo-500/30">
+            <i data-lucide="receipt-text" class="w-6 h-6 text-slate-950"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-100 to-emerald-300 bg-clip-text text-transparent">Conta Marlene</span>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">F29 Pro</span>
+            </div>
+            <p class="text-xs text-indigo-200/70 font-medium">Gestión Tributaria & Control de Cartera</p>
+          </div>
+        </div>
+
+        <!-- Global UTM Quick Bar -->
+        <div class="hidden md:flex items-center space-x-4 bg-slate-800/80 backdrop-blur px-4 py-1.5 rounded-xl border border-slate-700/60 shadow-inner">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="calendar" class="w-4 h-4 text-emerald-400"></i>
+            <span class="text-xs text-slate-300 font-medium">Periodo:</span>
+            <select id="select-global-period" onchange="changeGlobalPeriod()" class="bg-slate-900 border border-slate-700 text-white text-xs rounded-lg px-2 py-1 focus:ring-2 focus:ring-indigo-400 focus:outline-none font-semibold">
+              <option value="2026-07">Julio 2026</option>
+              <option value="2026-08" selected>Agosto 2026</option>
+              <option value="2026-09">Septiembre 2026</option>
+            </select>
+          </div>
+
+          <div class="h-4 w-px bg-slate-700"></div>
+
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-slate-300 font-medium">Valor UTM:</span>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-xs text-slate-400 font-mono">$</span>
+              <input type="number" id="global-utm" value="71649" onchange="updateGlobalUtm(this.value)" class="w-24 pl-5 pr-2 py-1 text-xs font-mono font-bold bg-slate-900 text-emerald-300 border border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:outline-none">
+            </div>
+            <button onclick="triggerMassUtmUpdate()" title="Actualizar crédito en todos los clientes con remanente" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 shadow transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span>Aplicar UTM</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sync, Export & Backup Actions -->
+        <div class="flex items-center space-x-2">
+          <!-- Botón Restaurar Don Guido -->
+          <button onclick="restoreDonGuidoAndSamples()" title="Cargar o restaurar la ficha de Don Guido Sepúlveda y ejemplos" class="bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition">
+            <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
+            <span>Ver Don Guido</span>
+          </button>
+
+          <!-- Botón Exportar Nómina a Excel -->
+          <button onclick="exportCurrentPeriodToExcel()" title="Descargar planilla Excel (.xlsx) con todos los clientes del mes" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Descargar Excel</span>
+          </button>
+
+          <!-- Botón Imprimir Nómina del Mes en PDF -->
+          <button onclick="printMonthlySummaryReport()" title="Imprimir o guardar en PDF la nómina completa del mes para archivar" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Nómina PDF</span>
+          </button>
+
+          <!-- Respaldo JSON -->
+          <button onclick="exportDataBackup()" title="Descargar respaldo para compartir con tu equipo" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span class="hidden md:inline">Respaldar</span>
+          </button>
+          
+          <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition">
+            <i data-lucide="upload" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span class="hidden md:inline">Cargar</span>
+            <input type="file" id="input-restore-backup" accept=".json" onchange="importDataBackup(event)" class="hidden">
+          </label>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ALERT BANNER: UPCOMING TAX DEADLINES -->
+  <div id="alert-banner" class="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 font-medium px-4 py-2.5 shadow-md">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+      <div class="flex items-center space-x-2">
+        <span class="p-1 bg-slate-950/20 rounded-md">
+          <i data-lucide="bell-ring" class="w-4 h-4 text-slate-950"></i>
+        </span>
+        <span class="font-bold">Semáforo Tributario:</span>
+        <span id="alert-summary-text">Calculando vencimientos del periodo...</span>
+      </div>
+      <div class="flex items-center space-x-3 text-xs font-semibold">
+        <span class="bg-slate-950/15 px-2.5 py-1 rounded-md flex items-center space-x-1">
+          <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+          <span>Día 12: <b id="count-alert-12" class="underline">0</b> clientes</span>
+        </span>
+        <span class="bg-slate-950/15 px-2.5 py-1 rounded-md flex items-center space-x-1">
+          <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+          <span>Día 20: <b id="count-alert-20" class="underline">0</b> clientes</span>
+        </span>
+        <span class="bg-white/80 text-amber-950 px-2 py-0.5 rounded shadow-sm">
+          Acuse Facturas: <b id="alert-acuse-date">31 de Agosto</b>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- KPI STATS CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+      
+      <!-- Card: Total Clientes -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-500 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider">Cartera Total</span>
+          <div class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <i data-lucide="users" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="text-2xl font-black text-slate-900" id="kpi-total-clients">0</div>
+        <div class="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+          <span id="kpi-active-clients">0 activos</span>
+          <span class="text-slate-400" id="kpi-inactive-clients">0 archivados</span>
+        </div>
+      </div>
+
+      <!-- Card: A Pagar -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-rose-200/80 bg-rose-50/20 hover:shadow-md transition">
+        <div class="flex items-center justify-between text-rose-600 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider">Con Impuesto a Pagar</span>
+          <div class="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center">
+            <i data-lucide="trending-up" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="text-2xl font-black text-rose-700" id="kpi-total-pay-count">0</div>
+        <div class="text-[11px] font-mono font-bold text-rose-600 mt-1" id="kpi-total-pay-amount">$0</div>
+      </div>
+
+      <!-- Card: Remanente a Favor -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-emerald-200/80 bg-emerald-50/20 hover:shadow-md transition">
+        <div class="flex items-center justify-between text-emerald-700 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider">Crédito a Favor</span>
+          <div class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="text-2xl font-black text-emerald-700" id="kpi-total-credit-count">0</div>
+        <div class="text-[11px] font-mono font-bold text-emerald-600 mt-1" id="kpi-total-credit-amount">$0</div>
+      </div>
+
+      <!-- Card: Sin Movimiento -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-500 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider">Sin Movimiento</span>
+          <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+            <i data-lucide="minus-circle" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="text-2xl font-black text-slate-800" id="kpi-zero-count">0</div>
+        <div class="text-[11px] text-slate-500 mt-1">Declaración F29 en cero</div>
+      </div>
+
+      <!-- Card: Solo Actualizar Crédito -->
+      <div class="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 shadow-sm border border-indigo-200/80 bg-indigo-50/20 hover:shadow-md transition">
+        <div class="flex items-center justify-between text-indigo-700 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider">Solo Remanente</span>
+          <div class="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <i data-lucide="coins" class="w-4 h-4"></i>
+          </div>
+        </div>
+        <div class="text-2xl font-black text-indigo-800" id="kpi-remanente-only-count">0</div>
+        <div class="text-[11px] text-indigo-600 font-semibold mt-1">Actualizado por UTM</div>
+      </div>
+
+    </div>
+
+    <!-- ACTION CONTROLS & FILTERS -->
+    <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Search & Filters -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-[300px]">
+        <div class="relative flex-1 min-w-[200px]">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input type="text" id="filter-search" oninput="renderClientList()" placeholder="Buscar cliente por RUT o Razón Social..." class="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-400 focus:outline-none transition">
+        </div>
+
+        <select id="filter-deadline" onchange="renderClientList()" class="text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 py-2 px-3 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+          <option value="all">📅 Todos los vencimientos</option>
+          <option value="12">Vencen Día 12 (No Fact. Elec.)</option>
+          <option value="20">Vencen Día 20 (Fact. Electrónico)</option>
+        </select>
+
+        <select id="filter-status" onchange="renderClientList()" class="text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 py-2 px-3 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+          <option value="active">Activos (~100 clientes)</option>
+          <option value="pay">Con Impuesto a Pagar</option>
+          <option value="credit">Con Crédito Remanente</option>
+          <option value="zero">Sin Movimiento</option>
+          <option value="remanente">Solo Remanente</option>
+          <option value="inactive">Archivados / Dados de Baja</option>
+          <option value="all">Todos (Histórico total)</option>
+        </select>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="flex items-center space-x-2">
+        <button onclick="openModalAddClient()" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-md shadow-indigo-600/20 transition">
+          <i data-lucide="user-plus" class="w-4 h-4"></i>
+          <span>Nuevo Cliente</span>
+        </button>
+        <button onclick="openModalQuickImport()" title="Importar o pegar nómina de clientes de una foto o texto" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition">
+          <i data-lucide="file-text" class="w-4 h-4 text-emerald-400"></i>
+          <span class="hidden sm:inline">Carga Rápida</span>
+        </button>
+        <!-- Cargar Excel con pestañas de meses -->
+        <label class="cursor-pointer bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition">
+          <i data-lucide="layers" class="w-4 h-4"></i>
+          <span>Cargar Excel (Pestañas)</span>
+          <input type="file" id="input-multi-excel" accept=".xlsx, .xls" onchange="handleMultiSheetExcelUpload(event)" class="hidden">
+        </label>
+      </div>
+
+    </div>
+
+    <!-- MAIN CLIENTS TABLE -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs sm:text-sm">
+          <thead>
+            <tr class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
+              <th class="py-3.5 px-4">Contribuyente</th>
+              <th class="py-3.5 px-3">Régimen / Vence</th>
+              <th class="py-3.5 px-3 text-right">Débito Fiscal</th>
+              <th class="py-3.5 px-3 text-right">Crédito Fiscal</th>
+              <th class="py-3.5 px-3 text-right">Remanente Ant.</th>
+              <th class="py-3.5 px-3 text-right">PPM + Retenc.</th>
+              <th class="py-3.5 px-4 text-right">Resultado F29</th>
+              <th class="py-3.5 px-4 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="clients-table-body" class="divide-y divide-slate-100 font-medium">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden py-12 px-4 text-center">
+        <div class="w-16 h-16 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
+          <i data-lucide="inbox" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-sm font-bold text-slate-800">No se encontraron clientes</h3>
+        <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">No hay clientes que coincidan con los filtros aplicados o tu cartera está vacía.</p>
+        <button onclick="loadSampleData()" class="mt-4 inline-flex items-center space-x-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 transition">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>Cargar clientes de prueba (con el caso real de Guido Sepúlveda)</span>
+        </button>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- MODAL: DETALLE & CÁLCULO F29 (LA RÉPLICA DEL EXCEL) -->
+  <div id="modal-f29" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 overflow-y-auto">
+    <div class="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-150">
+      
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white px-6 py-4 flex items-center justify-between border-b border-indigo-900/50">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+            F29
+          </div>
+          <div>
+            <h2 class="text-base font-extrabold tracking-tight" id="modal-client-name">Cliente: -</h2>
+            <p class="text-xs text-indigo-200/80 font-mono">RUT: <span id="modal-client-rut" class="font-bold text-white">-</span> | Periodo: <span id="modal-client-period" class="font-bold text-emerald-300">-</span></p>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <!-- Drop RCV / Excel button -->
+          <label class="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow transition">
+            <i data-lucide="file-up" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Importar RCV / Excel SII</span>
+            <input type="file" id="input-rcv-file" accept=".csv, .xlsx, .xls, .txt" onchange="handleRcvFileUpload(event)" class="hidden">
+          </label>
+
+          <!-- Print Voucher PDF Button -->
+          <button onclick="if(activeClientF29) printClientVoucher(activeClientF29.id)" title="Imprimir Comprobante Oficial F29 o Guardar como PDF" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow transition">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            <span>Comprobante PDF</span>
+          </button>
+
+          <button onclick="closeModalF29()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Navigation Tabs -->
+      <div class="flex items-center space-x-2 px-6 pt-2.5 bg-slate-100 border-b border-slate-200">
+        <button id="btn-f29-tab-calc" onclick="switchF29Tab('calc')" class="px-4 py-2 text-xs font-bold rounded-t-xl bg-white text-indigo-700 border-t border-l border-r border-slate-200 flex items-center space-x-1.5 shadow-sm">
+          <i data-lucide="calculator" class="w-4 h-4"></i>
+          <span>Cálculo & Resumen F29</span>
+        </button>
+        <button id="btn-f29-tab-rcv" onclick="switchF29Tab('rcv')" class="px-4 py-2 text-xs font-bold rounded-t-xl text-slate-600 hover:text-slate-900 flex items-center space-x-1.5">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600"></i>
+          <span>Informe Detalle Documentos (RCV)</span>
+          <span id="badge-rcv-count" class="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">0</span>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto">
+
+        <!-- PESTAÑA 1: FORMULARIO HOJA DE CÁLCULO F29 -->
+        <div id="tab-f29-calc-content" class="space-y-6">
+
+          <!-- Top Indicator Bar -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+            <div>
+              <span class="text-slate-500 font-semibold">Valor UTM del Mes:</span>
+              <div class="text-sm font-mono font-bold text-slate-800" id="modal-utm-display">$71.649</div>
+            </div>
+            <div>
+              <span class="text-slate-500 font-semibold">Tasa PPM (%):</span>
+              <input type="number" step="0.01" id="input-ppm-rate" oninput="calculateModalF29()" class="w-20 px-2 py-0.5 bg-white border border-slate-300 rounded font-bold font-mono text-indigo-700">
+            </div>
+            <div>
+              <span class="text-slate-500 font-semibold">Tasa Retención 2da Cat. (Honorarios):</span>
+              <input type="number" step="0.01" id="input-ret2-rate" value="15.25" oninput="calculateModalF29()" class="w-20 px-2 py-0.5 bg-white border border-slate-300 rounded font-bold font-mono text-indigo-700">
+            </div>
+          </div>
+
+          <!-- 2 Columns: Ventas (Débito) & Compras (Crédito) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- Columna Izquierda: VENTAS (DÉBITO FISCAL) -->
+            <div class="bg-indigo-50/40 rounded-xl p-4 border border-indigo-100 space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-indigo-200">
+                <span class="font-extrabold text-indigo-900 text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                  <i data-lucide="arrow-up-right" class="w-4 h-4 text-indigo-600"></i>
+                  <span>Ventas (Débito Fiscal)</span>
+                </span>
+                <span class="text-xs font-mono font-bold text-indigo-700" id="display-sum-debito">$0</span>
+              </div>
+
+              <div class="space-y-2 text-xs">
+                <!-- Boletas Electrónicas (39) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium">Boletas Electrónicas (39):</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="vta-boletas-neto" placeholder="Neto" oninput="calcVatFromNet('vta-boletas')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="vta-boletas-iva" placeholder="IVA" oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-indigo-300 rounded text-right font-mono text-xs font-bold text-indigo-900">
+                  </div>
+                </div>
+
+                <!-- Comprobantes Transbank (48) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium">Comprobantes Transbank (48):</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="vta-vouchers-neto" placeholder="Neto" oninput="calcVatFromNet('vta-vouchers')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="vta-vouchers-iva" placeholder="IVA" oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-indigo-300 rounded text-right font-mono text-xs font-bold text-indigo-900">
+                  </div>
+                </div>
+
+                <!-- Facturas Venta (33) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium">Facturas Venta (33):</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="vta-facturas-neto" placeholder="Neto" oninput="calcVatFromNet('vta-facturas')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="vta-facturas-iva" placeholder="IVA" oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-indigo-300 rounded text-right font-mono text-xs font-bold text-indigo-900">
+                  </div>
+                </div>
+
+                <!-- Notas de Crédito Venta (61) (Resta débito) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium text-rose-700">Notas de Crédito Venta (61):</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="vta-nc-neto" placeholder="Neto" oninput="calcVatFromNet('vta-nc')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="vta-nc-iva" placeholder="- IVA" oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-rose-300 rounded text-right font-mono text-xs font-bold text-rose-700">
+                  </div>
+                </div>
+
+                <!-- Ventas Exentas -->
+                <div class="flex items-center justify-between gap-2 pt-1 border-t border-indigo-100">
+                  <label class="text-slate-600 font-semibold">Ventas Exentas:</label>
+                  <input type="number" id="vta-exenta" placeholder="Monto Exento" oninput="calculateModalF29()" class="w-28 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs font-semibold">
+                </div>
+
+                <!-- Valor Otro Impuesto Venta -->
+                <div class="flex items-center justify-between gap-2 pt-1">
+                  <label class="text-slate-600 font-semibold">Valor Otro Impuesto Venta:</label>
+                  <input type="number" id="vta-otro-impto-valor" placeholder="$ Otro Impto" oninput="calculateModalF29()" class="w-28 px-2 py-1 bg-white border border-indigo-300 rounded text-right font-mono text-xs font-bold text-indigo-900">
+                </div>
+              </div>
+            </div>
+
+            <!-- Columna Derecha: COMPRAS (CRÉDITO FISCAL & REMANENTE) -->
+            <div class="bg-emerald-50/40 rounded-xl p-4 border border-emerald-100 space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-emerald-200">
+                <span class="font-extrabold text-emerald-900 text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                  <i data-lucide="arrow-down-left" class="w-4 h-4 text-emerald-600"></i>
+                  <span>Compras (Crédito Fiscal)</span>
+                </span>
+                <span class="text-xs font-mono font-bold text-emerald-700" id="display-sum-credito">$0</span>
+              </div>
+
+              <div class="space-y-2 text-xs">
+                <!-- Facturas de Compra (33) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium">Facturas Compra (33):</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="cmp-facturas-neto" placeholder="Neto" oninput="calcVatFromNet('cmp-facturas')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="cmp-facturas-iva" placeholder="IVA Recup." oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-emerald-300 rounded text-right font-mono text-xs font-bold text-emerald-900">
+                  </div>
+                </div>
+
+                <!-- Notas de Crédito Compra (Resta crédito) -->
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-slate-700 font-medium text-rose-700">Notas de Crédito Recibidas:</label>
+                  <div class="flex items-center space-x-1">
+                    <input type="number" id="cmp-nc-neto" placeholder="Neto" oninput="calcVatFromNet('cmp-nc')" class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs">
+                    <input type="number" id="cmp-nc-iva" placeholder="- IVA" oninput="calculateModalF29()" class="w-24 px-2 py-1 bg-white border border-rose-300 rounded text-right font-mono text-xs font-bold text-rose-700">
+                  </div>
+                </div>
+
+                <!-- Remanente de Crédito Mes Anterior -->
+                <div class="pt-2 border-t border-emerald-200/60 bg-emerald-100/50 p-2.5 rounded-lg space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-emerald-950 text-xs flex items-center space-x-1">
+                      <i data-lucide="history" class="w-3.5 h-3.5 text-emerald-700"></i>
+                      <span>Remanente Mes Anterior:</span>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center space-x-1">
+                      <input type="number" step="0.01" id="cmp-remanente-utm" placeholder="UTM" oninput="calcRemanenteFromUtm()" class="w-20 px-2 py-1 bg-white border border-emerald-400 rounded text-right font-mono text-xs font-bold text-emerald-900">
+                      <span class="text-[11px] font-bold text-emerald-800">UTM</span>
+                    </div>
+                    <span class="text-xs text-slate-500 font-bold">=</span>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 pl-1.5 flex items-center text-xs text-slate-400 font-mono">$</span>
+                      <input type="number" id="cmp-remanente-pesos" placeholder="$ Pesos" oninput="calculateModalF29()" class="w-28 pl-4 pr-2 py-1 bg-white border border-emerald-400 rounded text-right font-mono text-xs font-bold text-emerald-900">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Compras Exentas -->
+                <div class="flex items-center justify-between gap-2 pt-1 border-t border-emerald-200/60">
+                  <label class="text-slate-600 font-semibold">Compras Exentas:</label>
+                  <input type="number" id="cmp-exenta" placeholder="Monto Exento" oninput="calculateModalF29()" class="w-28 px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono text-xs font-semibold">
+                </div>
+
+                <!-- Valor Otro Impuesto Compra -->
+                <div class="flex items-center justify-between gap-2 pt-1">
+                  <label class="text-slate-600 font-semibold">Valor Otro Impuesto Compra:</label>
+                  <input type="number" id="cmp-otro-impto-valor" placeholder="$ Otro Impto" oninput="calculateModalF29()" class="w-28 px-2 py-1 bg-white border border-emerald-400 rounded text-right font-mono text-xs font-bold text-emerald-900">
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+          <!-- FILA DE IMPUESTOS ADICIONALES: PPM & RETENCIÓN DE HONORARIOS -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-100/70 p-4 rounded-xl border border-slate-200 text-xs">
+            
+            <!-- PPM -->
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <span class="font-bold text-slate-800 block">PPM a Pagar:</span>
+                <span class="text-[11px] text-slate-500 font-mono">Base Ventas Netas: $<span id="display-ppm-base">0</span></span>
+              </div>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-xs text-slate-400 font-mono">$</span>
+                <input type="number" id="input-ppm-pagar" oninput="calculateModalF29()" class="w-32 pl-5 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-right font-mono font-bold text-slate-900">
+              </div>
+            </div>
+
+            <!-- Retención 2da Categoría (Honorarios) -->
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <span class="font-bold text-slate-800 block">Retención 2da Categoría (Honorarios):</span>
+                <span class="text-[11px] text-slate-500">Boletas de honorarios recibidas</span>
+              </div>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-xs text-slate-400 font-mono">$</span>
+                <input type="number" id="input-ret2-pagar" oninput="calculateModalF29()" class="w-32 pl-5 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-right font-mono font-bold text-slate-900">
+              </div>
+            </div>
+
+          </div>
+
+          <!-- CAJA DE RESULTADO FINAL F29 -->
+          <div id="box-result-summary" class="rounded-2xl p-5 border shadow-sm transition-all duration-200">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <span class="text-xs font-bold uppercase tracking-wider block" id="result-label">Resultado Final F29</span>
+                <h3 class="text-3xl font-black font-mono tracking-tight" id="result-amount">$0</h3>
+                <p class="text-xs mt-1" id="result-detail">Balance general calculado</p>
+              </div>
+
+              <!-- WhatsApp Direct Action Button inside modal -->
+              <button id="btn-modal-whatsapp" onclick="sendModalWhatsApp()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center space-x-2 shadow-lg shadow-emerald-600/30 transition">
+                <i data-lucide="message-circle" class="w-4 h-4"></i>
+                <span>Enviar Resumen por WhatsApp</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- PESTAÑA 2: INFORME DETALLE DOCUMENTOS RCV & BORRADO DE FACTURAS -->
+        <div id="tab-f29-rcv-content" class="space-y-4 hidden">
+          
+          <!-- Top KPI / Totales del RCV -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Doctos</span>
+              <span id="rcv-kpi-docs" class="font-black text-slate-800 text-sm">0</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Neto</span>
+              <span id="rcv-kpi-neto" class="font-bold font-mono text-indigo-700 text-xs">$ 0</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-amber-200 bg-amber-50/40 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-amber-800 block">Monto Exento</span>
+              <span id="rcv-kpi-exento" class="font-bold font-mono text-amber-900 text-xs">$ 0</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Total IVA</span>
+              <span id="rcv-kpi-iva" class="font-bold font-mono text-emerald-700 text-xs">$ 0</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/40 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-indigo-800 block">Otros Impuestos</span>
+              <span id="rcv-kpi-otros" class="font-bold font-mono text-indigo-900 text-xs">$ 0</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Facturado</span>
+              <span id="rcv-kpi-total" class="font-black font-mono text-slate-900 text-xs">$ 0</span>
+            </div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                <i data-lucide="filter" class="w-3.5 h-3.5 text-indigo-600"></i>
+                <span>Ver:</span>
+              </span>
+              <select id="select-rcv-operacion" onchange="renderRcvDocumentsTable()" class="bg-white border border-slate-300 text-xs font-semibold rounded-lg px-2.5 py-1">
+                <option value="all">Todas (Compras y Ventas)</option>
+                <option value="COMPRA">Solo Compras (Proveedores)</option>
+                <option value="VENTA">Solo Ventas (Clientes)</option>
+              </select>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <button onclick="promptAddManualDocument()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>Agregar Documento</span>
+              </button>
+              <button onclick="exportRcvToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                <span>Descargar Excel</span>
+              </button>
+              <button onclick="printRcvReport()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1 shadow-sm transition">
+                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                <span>Imprimir Informe PDF</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Document List Table -->
+          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto max-h-80">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0 bg-slate-100/90 backdrop-blur text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200 z-10">
+                  <tr>
+                    <th class="py-2.5 px-3">Operación</th>
+                    <th class="py-2.5 px-2">Tipo Doc</th>
+                    <th class="py-2.5 px-2">Folio</th>
+                    <th class="py-2.5 px-2">Fecha</th>
+                    <th class="py-2.5 px-3">RUT y Razón Social</th>
+                    <th class="py-2.5 px-2 text-right">Exento ($)</th>
+                    <th class="py-2.5 px-2 text-right">Neto ($)</th>
+                    <th class="py-2.5 px-2 text-right">IVA ($)</th>
+                    <th class="py-2.5 px-2 text-right">Otro Impto ($)</th>
+                    <th class="py-2.5 px-3 text-right">Total ($)</th>
+                    <th class="py-2.5 px-2 text-center">Borrar</th>
+                  </tr>
+                </thead>
+                <tbody id="rcv-documents-tbody" class="divide-y divide-slate-100 font-medium">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 italic">
+            💡 Puedes borrar cualquier factura o boleta que no corresponda haciendo clic en el icono rojo de basurero. Los totales de IVA y el F29 se recalcularán de inmediato.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+        <button onclick="markAsZeroMovement()" class="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-white transition flex items-center space-x-1.5">
+          <i data-lucide="circle-slash" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span>Declarar Sin Movimiento</span>
+        </button>
+
+        <div class="flex items-center space-x-2">
+          <button onclick="closeModalF29()" class="text-xs font-semibold text-slate-600 hover:text-slate-800 px-4 py-2 rounded-xl transition">
+            Cancelar
+          </button>
+          <button onclick="saveModalF29()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-md transition flex items-center space-x-1.5">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Guardar Cálculo F29</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: AGREGAR / EDITAR CLIENTE -->
+  <div id="modal-client" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <h3 class="text-sm font-extrabold" id="modal-client-title">Nuevo Contribuyente</h3>
+        <button onclick="closeModalClient()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-client" onsubmit="handleSaveClient(event)" class="p-6 space-y-4 text-xs">
+        <input type="hidden" id="client-form-id">
+        
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">RUT Contribuyente *</label>
+          <input type="text" id="client-form-rut" placeholder="Ej: 12.790.291-7" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-400 focus:outline-none font-mono">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nombre o Razón Social *</label>
+          <input type="text" id="client-form-name" placeholder="Ej: Patricio Carvallo y Cia. Ltda." required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Régimen / Tipo</label>
+            <select id="client-form-regime" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold">
+              <option value="ProPyme 14 D3">ProPyme General (14 D3)</option>
+              <option value="ProPyme 14 D8">ProPyme Transparente (14 D8)</option>
+              <option value="General 14 A">Régimen General (14 A)</option>
+              <option value="Renta Presunta">Renta Presunta</option>
+              <option value="Segunda Categoria">Segunda Categoría</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Día de Pago F29 *</label>
+            <select id="client-form-deadline" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-indigo-700">
+              <option value="20">Día 20 (Facturador Electrónico)</option>
+              <option value="12">Día 12 (No Facturador / Papel)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">WhatsApp de Contacto</label>
+            <input type="text" id="client-form-phone" placeholder="Ej: +56912345678" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tasa PPM Defecto (%)</label>
+            <input type="number" step="0.01" id="client-form-ppm" placeholder="1.50" value="1.50" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Correo Electrónico</label>
+          <input type="email" id="client-form-email" placeholder="contacto@empresa.cl" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl">
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+          <button type="button" id="btn-toggle-archive-client" onclick="toggleArchiveClient()" class="hidden text-rose-600 hover:text-rose-800 font-bold flex items-center space-x-1">
+            <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+            <span id="text-archive-btn">Dar de Baja</span>
+          </button>
+          
+          <div class="flex items-center space-x-2 ml-auto">
+            <button type="button" onclick="closeModalClient()" class="px-4 py-2 rounded-xl text-slate-600 font-semibold">Cancelar</button>
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2 rounded-xl shadow">Guardar Ficha</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CARGA RÁPIDA DE CLIENTES (DESDE FOTOS / TEXTO / EXCEL) -->
+  <div id="modal-quick-import" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-gradient-to-r from-emerald-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="wand-2" class="w-5 h-5 text-emerald-400"></i>
+          <h3 class="text-sm font-extrabold">Carga Rápida de Clientes (Fotos / Texto)</h3>
+        </div>
+        <button onclick="closeModalQuickImport()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-600">
+          Puedes pegar una lista de tus clientes (RUT y Nombre en cada línea), o el texto extraído de tus fotos. Nuestro asistente detectará automáticamente los RUTs y creará las fichas para que no tengas que escribirlos a mano:
+        </p>
+
+        <textarea id="text-quick-import" rows="8" placeholder="Ejemplo:&#10;12.790.291-7 Guido Sepulveda Mendez&#10;85.232.200-4 Patricio Carvallo y Cia. Ltda. +56987654321&#10;76.543.210-K Transportes del Sur SpA" class="w-full p-3 font-mono bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-400 focus:outline-none text-xs"></textarea>
+
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+          <span class="text-emerald-900 font-medium">Asignar día de vencimiento por defecto a esta lista:</span>
+          <select id="quick-import-default-day" class="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 font-bold text-emerald-900">
+            <option value="20">Día 20 (Facturadores Electrónicos)</option>
+            <option value="12">Día 12 (No Facturadores)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 pt-2">
+          <button onclick="closeModalQuickImport()" class="px-4 py-2 rounded-xl text-slate-600 font-semibold">Cerrar</button>
+          <button onclick="processQuickImport()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl shadow flex items-center space-x-1.5">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Procesar y Agregar Clientes</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <script>
+    // --- ESTADO GLOBAL & PERSISTENCIA LOCAL (MULTI-USUARIO CON RESPALDO) ---
+    const STORAGE_KEY = 'conta_marlene_db_v3';
+
+    let appState = {
+      period: '2026-08',
+      utm: 71649,
+      clients: []
+    };
+
+    // Formateador de moneda chilena ($)
+    const clp = (num) => {
+      const val = Math.round(Number(num) || 0);
+      return '$ ' + val.toLocaleString('es-CL');
+    };
+
+    // Inicialización al cargar la página
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStateFromStorage();
+      if (!appState.clients || appState.clients.length === 0) {
+        loadSampleData();
+      } else {
+        renderAll();
+      }
+      lucide.createIcons();
+    });
+
+    // Guardar en almacenamiento del navegador
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      renderAll();
+    }
+
+    function loadStateFromStorage() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          appState = JSON.parse(saved);
+          document.getElementById('select-global-period').value = appState.period || '2026-08';
+          document.getElementById('global-utm').value = appState.utm || 71649;
+        } catch(e) {
+          console.error('Error cargando estado:', e);
+        }
+      }
+      // Asegurar que Don Guido Sepúlveda y datos de ejemplo siempre existan
+      if (!appState.clients || appState.clients.length === 0 || !appState.clients.some(c => c.name && c.name.includes('GUIDO'))) {
+        loadSampleData();
+      }
+    }
+
+    function restoreDonGuidoAndSamples() {
+      if (confirm('¿Deseas restaurar la ficha de Don Guido Sepúlveda Méndez y los datos de prueba? (Tus otros clientes se conservarán).')) {
+        loadSampleData();
+        renderAll();
+        alert('¡Ficha de Don Guido Sepúlveda Méndez restaurada exitosamente!');
+      }
+    }
+
+    // Datos de ejemplo basados en tu Excel real
+    function loadSampleData() {
+      appState = {
+        period: '2026-08',
+        utm: 71649,
+        clients: [
+          {
+            id: 'cli-1',
+            rut: '12.790.291-7',
+            name: 'GUIDO SEPULVEDA MENDEZ',
+            regime: 'ProPyme 14 D3',
+            deadlineDay: 20,
+            phone: '+56991234567',
+            email: 'guido.sepulveda@email.cl',
+            ppmRate: 1.50,
+            ret2Rate: 15.25,
+            archived: false,
+            periods: {
+              '2026-01': {
+                ventas: { boletasNeto: 300000, boletasIva: 57000, vouchersNeto: 1200000, vouchersIva: 228000, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 900000, facturasIva: 171000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 22500, ret2Pagar: 0, totalPagar: 136500, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-02': {
+                ventas: { boletasNeto: 250000, boletasIva: 47500, vouchersNeto: 980000, vouchersIva: 186200, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1600000, facturasIva: 304000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 18450, ret2Pagar: 0, totalPagar: -51850, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-03': {
+                ventas: { boletasNeto: 350000, boletasIva: 66500, vouchersNeto: 1400000, vouchersIva: 266000, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1100000, facturasIva: 209000, ncNeto: 0, ncIva: 0, remanenteUtm: 0.74, remanentePesos: 51850, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 26250, ret2Pagar: 0, totalPagar: 97900, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-04': {
+                ventas: { boletasNeto: 280000, boletasIva: 53200, vouchersNeto: 1150000, vouchersIva: 218500, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1050000, facturasIva: 199500, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 21450, ret2Pagar: 0, totalPagar: 93650, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-05': {
+                ventas: { boletasNeto: 220000, boletasIva: 41800, vouchersNeto: 1050000, vouchersIva: 199500, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1300000, facturasIva: 247000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 19050, ret2Pagar: 0, totalPagar: 13350, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-06': {
+                ventas: { boletasNeto: 310000, boletasIva: 58900, vouchersNeto: 1250000, vouchersIva: 237500, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1200000, facturasIva: 228000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0, otroImpuestoValor: 0 },
+                ppmPagar: 23400, ret2Pagar: 11500, totalPagar: 103300, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-07': {
+                ventas: { boletasNeto: 242010, boletasIva: 45980, vouchersNeto: 1077421, vouchersIva: 204711, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 108, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1402983, facturasIva: 266567, ncNeto: 57239, ncIva: 10876, remanenteUtm: 1.25, remanentePesos: 89561, exenta: 2310, otroImpuestoValor: 385 },
+                ppmPagar: 19793, ret2Pagar: 8997, totalPagar: -405958, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-08': {
+                ventas: { boletasNeto: 242010, boletasIva: 45980, vouchersNeto: 1077421, vouchersIva: 204711, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 108, otroImpuestoValor: 0 },
+                compras: { facturasNeto: 1402983, facturasIva: 266567, ncNeto: 57239, ncIva: 10876, remanenteUtm: 1.25, remanentePesos: 89561, exenta: 2310, otroImpuestoValor: 385 },
+                ppmPagar: 19793,
+                ret2Pagar: 8997,
+                totalPagar: -405958,
+                isZero: false,
+                isRemanenteOnly: false,
+                calculated: true,
+                documents: [
+                  {
+                    id: 'doc-g1',
+                    operacion: 'COMPRA',
+                    tipoDoc: '33',
+                    tipoDocNombre: 'Factura Electrónica',
+                    folio: '1042',
+                    fecha: '2026-08-04',
+                    rut: '85.232.200-4',
+                    razonSocial: 'PATRICIO CARVALLO Y CIA LTDA',
+                    montoExento: 0,
+                    montoNeto: 1100000,
+                    montoIva: 209000,
+                    otroImpuestoValor: 0,
+                    montoTotal: 1309000
+                  },
+                  {
+                    id: 'doc-g2',
+                    operacion: 'COMPRA',
+                    tipoDoc: '33',
+                    tipoDocNombre: 'Factura Electrónica',
+                    folio: '5891',
+                    fecha: '2026-08-14',
+                    rut: '76.452.189-2',
+                    razonSocial: 'DISTRIBUIDORA MAYORISTA DEL SUR',
+                    montoExento: 2310,
+                    montoNeto: 302983,
+                    montoIva: 57567,
+                    otroImpuestoValor: 385,
+                    montoTotal: 363245
+                  },
+                  {
+                    id: 'doc-g3',
+                    operacion: 'COMPRA',
+                    tipoDoc: '61',
+                    tipoDocNombre: 'Nota de Crédito Electrónica',
+                    folio: '312',
+                    fecha: '2026-08-20',
+                    rut: '77.892.410-1',
+                    razonSocial: 'FERRETERIA CENTRAL SPA',
+                    montoExento: 0,
+                    montoNeto: 57239,
+                    montoIva: 10876,
+                    otroImpuestoValor: 0,
+                    montoTotal: 68115
+                  },
+                  {
+                    id: 'doc-g4',
+                    operacion: 'VENTA',
+                    tipoDoc: '39',
+                    tipoDocNombre: 'Boleta Electrónica (Resumen)',
+                    folio: '39-MES',
+                    fecha: '2026-08-31',
+                    rut: 'VARIOS',
+                    razonSocial: 'CLIENTES FINALES BOLETAS',
+                    montoExento: 108,
+                    montoNeto: 242010,
+                    montoIva: 45980,
+                    otroImpuestoValor: 0,
+                    montoTotal: 288098
+                  },
+                  {
+                    id: 'doc-g5',
+                    operacion: 'VENTA',
+                    tipoDoc: '48',
+                    tipoDocNombre: 'Comprobante Electrónico Transbank',
+                    folio: 'TBK-AGO',
+                    fecha: '2026-08-31',
+                    rut: '76.284.450-8',
+                    razonSocial: 'TRANSBANK S.A.',
+                    montoExento: 0,
+                    montoNeto: 1077421,
+                    montoIva: 204711,
+                    otroImpuestoValor: 0,
+                    montoTotal: 1282132
+                  }
+                ]
+              }
+            }
+          },
+          {
+            id: 'cli-2',
+            rut: '85.232.200-4',
+            name: 'PATRICIO CARVALLO Y CIA. LTDA.',
+            regime: 'General 14 A',
+            deadlineDay: 12,
+            phone: '+56987654321',
+            email: 'contacto@carvallo.cl',
+            ppmRate: 2.00,
+            ret2Rate: 15.25,
+            archived: false,
+            periods: {
+              '2025-11': {
+                ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 2800000, facturasIva: 532000, ncNeto: 0, ncIva: 0, exenta: 0 },
+                compras: { facturasNeto: 1100000, facturasIva: 209000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0 },
+                ppmPagar: 56000, ret2Pagar: 0, totalPagar: 379000, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2025-12': {
+                ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 4200000, facturasIva: 798000, ncNeto: 0, ncIva: 0, exenta: 0 },
+                compras: { facturasNeto: 1500000, facturasIva: 285000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0 },
+                ppmPagar: 84000, ret2Pagar: 0, totalPagar: 597000, isZero: false, isRemanenteOnly: false, calculated: true
+              },
+              '2026-08': {
+                ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 3500000, facturasIva: 665000, ncNeto: 0, ncIva: 0, exenta: 0 },
+                compras: { facturasNeto: 1200000, facturasIva: 228000, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0 },
+                ppmPagar: 70000, ret2Pagar: 0, totalPagar: 507000, isZero: false, isRemanenteOnly: false, calculated: true
+              }
+            }
+          },
+          {
+            id: 'cli-3',
+            rut: '76.890.123-5',
+            name: 'INVERSIONES SAN CRISTOBAL SPA',
+            regime: 'ProPyme 14 D8',
+            deadlineDay: 20,
+            phone: '+56976543210',
+            email: 'admin@sancristobal.cl',
+            ppmRate: 0.25,
+            ret2Rate: 15.25,
+            archived: false,
+            periods: {
+              '2026-08': {
+                ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0 },
+                compras: { facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, remanenteUtm: 4.80, remanentePesos: 343915, exenta: 0 },
+                ppmPagar: 0,
+                ret2Pagar: 0,
+                totalPagar: -343915,
+                isZero: false,
+                isRemanenteOnly: true, // Solo remanente
+                calculated: true
+              }
+            }
+          },
+          {
+            id: 'cli-4',
+            rut: '77.123.456-8',
+            name: 'COMERCIALIZADORA DEL VALLE LTDA',
+            regime: 'ProPyme 14 D3',
+            deadlineDay: 20,
+            phone: '+56965432109',
+            email: 'pagos@delvalle.cl',
+            ppmRate: 1.50,
+            ret2Rate: 15.25,
+            archived: false,
+            periods: {
+              '2026-08': {
+                ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0 },
+                compras: { facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, remanenteUtm: 0, remanentePesos: 0, exenta: 0 },
+                ppmPagar: 0,
+                ret2Pagar: 0,
+                totalPagar: 0,
+                isZero: true, // Sin movimiento
+                isRemanenteOnly: false,
+                calculated: true
+              }
+            }
+          }
+        ]
+      };
+      saveState();
+    }
+
+    // Cambiar Periodo Global
+    function changeGlobalPeriod() {
+      appState.period = document.getElementById('select-global-period').value;
+      saveState();
+    }
+
+    // Actualizar Valor UTM Global
+    function updateGlobalUtm(newVal) {
+      appState.utm = Number(newVal) || 71649;
+      saveState();
+    }
+
+    // Disparador de Actualización Masiva de Remanentes por UTM
+    function triggerMassUtmUpdate() {
+      let count = 0;
+      appState.clients.forEach(client => {
+        const periodData = getClientPeriodData(client, appState.period);
+        if (periodData.compras && periodData.compras.remanenteUtm > 0) {
+          periodData.compras.remanentePesos = Math.round(periodData.compras.remanenteUtm * appState.utm);
+          // Recalcular saldo
+          recalculatePeriodData(periodData);
+          count++;
+        }
+      });
+      saveState();
+      alert(`¡Listo! Se actualizó con éxito el crédito en pesos de ${count} clientes con remanente acumulado para el periodo ${appState.period} (UTM: $${appState.utm.toLocaleString('es-CL')}).`);
+    }
+
+    // Obtener datos del periodo de un cliente (o crear vacíos si no existen)
+    function getClientPeriodData(client, period) {
+      if (!client.periods) client.periods = {};
+      if (!client.periods[period]) {
+        // Intentar arrastrar remanente del mes anterior
+        const prevUtm = getPreviousMonthRemanente(client, period);
+        client.periods[period] = {
+          ventas: { boletasNeto: 0, boletasIva: 0, vouchersNeto: 0, vouchersIva: 0, facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, exenta: 0 },
+          compras: { facturasNeto: 0, facturasIva: 0, ncNeto: 0, ncIva: 0, remanenteUtm: prevUtm, remanentePesos: Math.round(prevUtm * appState.utm), exenta: 0 },
+          ppmPagar: 0,
+          ret2Pagar: 0,
+          totalPagar: (prevUtm > 0) ? -Math.round(prevUtm * appState.utm) : 0,
+          isZero: prevUtm === 0,
+          isRemanenteOnly: prevUtm > 0,
+          calculated: false
+        };
+      }
+      return client.periods[period];
+    }
+
+    function getPreviousMonthRemanente(client, currentPeriod) {
+      // Si tiene periodo anterior con saldo a favor, devolver el remanente en UTM
+      const periods = Object.keys(client.periods || {}).sort();
+      const idx = periods.indexOf(currentPeriod);
+      if (idx > 0) {
+        const prevData = client.periods[periods[idx - 1]];
+        if (prevData && prevData.totalPagar < 0) {
+          return Number((Math.abs(prevData.totalPagar) / appState.utm).toFixed(2));
+        }
+      }
+      return 0;
+    }
+
+    function recalculatePeriodData(data) {
+      const v = data.ventas || {};
+      const c = data.compras || {};
+      
+      const debito = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+      const credito = (c.facturasIva || 0) - (c.ncIva || 0) + (c.remanentePesos || 0);
+      
+      const balanceIva = debito - credito; // Si > 0 paga IVA, si < 0 queda remanente
+      const totalF29 = balanceIva + (data.ppmPagar || 0) + (data.ret2Pagar || 0) + (v.otroImpuestoValor || 0);
+      
+      data.totalPagar = totalF29;
+      data.isZero = (debito === 0 && credito === 0 && (data.ppmPagar || 0) === 0 && (data.ret2Pagar || 0) === 0 && (v.exenta || 0) === 0 && (c.exenta || 0) === 0);
+      data.isRemanenteOnly = (debito === 0 && (c.facturasIva || 0) === 0 && (c.remanentePesos || 0) > 0);
+      data.calculated = true;
+      return data;
+    }
+
+    // --- RENDERIZADO GENERAL ---
+    function renderAll() {
+      renderAlertBanner();
+      renderKpis();
+      renderClientList();
+      lucide.createIcons();
+    }
+
+    function renderAlertBanner() {
+      const currentPeriod = appState.period;
+      let count12 = 0;
+      let count20 = 0;
+
+      appState.clients.filter(c => !c.archived).forEach(c => {
+        if (c.deadlineDay == 12) count12++;
+        if (c.deadlineDay == 20) count20++;
+      });
+
+      document.getElementById('count-alert-12').innerText = count12;
+      document.getElementById('count-alert-20').innerText = count20;
+
+      const [y, m] = currentPeriod.split('-');
+      const lastDay = new Date(Number(y), Number(m), 0).getDate();
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      document.getElementById('alert-acuse-date').innerText = `${lastDay} de ${monthNames[Number(m)]}`;
+      document.getElementById('alert-summary-text').innerText = `Período ${monthNames[Number(m)]} ${y}: Control de acuses y vencimientos activos.`;
+    }
+
+    function renderKpis() {
+      const currentPeriod = appState.period;
+      const activeClients = appState.clients.filter(c => !c.archived);
+      const archivedClients = appState.clients.filter(c => c.archived);
+
+      let payCount = 0;
+      let paySum = 0;
+      let creditCount = 0;
+      let creditSum = 0;
+      let zeroCount = 0;
+      let remanenteCount = 0;
+
+      activeClients.forEach(c => {
+        const p = getClientPeriodData(c, currentPeriod);
+        if (p.isZero) {
+          zeroCount++;
+        } else if (p.totalPagar > 0) {
+          payCount++;
+          paySum += p.totalPagar;
+        } else if (p.totalPagar < 0) {
+          creditCount++;
+          creditSum += Math.abs(p.totalPagar);
+          if (p.isRemanenteOnly) remanenteCount++;
+        }
+      });
+
+      document.getElementById('kpi-total-clients').innerText = appState.clients.length;
+      document.getElementById('kpi-active-clients').innerText = `${activeClients.length} activos`;
+      document.getElementById('kpi-inactive-clients').innerText = `${archivedClients.length} archivados`;
+
+      document.getElementById('kpi-total-pay-count').innerText = payCount;
+      document.getElementById('kpi-total-pay-amount').innerText = clp(paySum);
+
+      document.getElementById('kpi-total-credit-count').innerText = creditCount;
+      document.getElementById('kpi-total-credit-amount').innerText = clp(creditSum);
+
+      document.getElementById('kpi-zero-count').innerText = zeroCount;
+      document.getElementById('kpi-remanente-only-count').innerText = remanenteCount;
+    }
+
+    function renderClientList() {
+      const tbody = document.getElementById('clients-table-body');
+      const emptyState = document.getElementById('empty-state');
+      const search = document.getElementById('filter-search').value.toLowerCase().trim();
+      const deadlineFilter = document.getElementById('filter-deadline').value;
+      const statusFilter = document.getElementById('filter-status').value;
+      const currentPeriod = appState.period;
+
+      let filtered = appState.clients.filter(c => {
+        // Filtro de búsqueda
+        const matchSearch = c.rut.toLowerCase().includes(search) || c.name.toLowerCase().includes(search);
+        if (!matchSearch) return false;
+
+        // Filtro de vencimiento
+        if (deadlineFilter !== 'all' && c.deadlineDay != deadlineFilter) return false;
+
+        // Filtro de estado
+        const p = getClientPeriodData(c, currentPeriod);
+        if (statusFilter === 'active') return !c.archived;
+        if (statusFilter === 'inactive') return c.archived;
+        if (statusFilter === 'pay') return !c.archived && p.totalPagar > 0;
+        if (statusFilter === 'credit') return !c.archived && p.totalPagar < 0;
+        if (statusFilter === 'zero') return !c.archived && p.isZero;
+        if (statusFilter === 'remanente') return !c.archived && p.isRemanenteOnly;
+
+        return true;
+      });
+
+      tbody.innerHTML = '';
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      filtered.forEach(c => {
+        const p = getClientPeriodData(c, currentPeriod);
+        const v = p.ventas || {};
+        const co = p.compras || {};
+
+        const debitoTotal = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+        const creditoCompras = (co.facturasIva || 0) - (co.ncIva || 0);
+        const remanentePesos = co.remanentePesos || 0;
+        const ppmYRet = (p.ppmPagar || 0) + (p.ret2Pagar || 0);
+
+        // Badge de resultado
+        let resultBadge = '';
+        if (p.isZero) {
+          resultBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">Sin Movimiento</span>`;
+        } else if (p.totalPagar > 0) {
+          resultBadge = `
+            <div class="text-right">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-black bg-rose-100 text-rose-800 border border-rose-200">
+                Paga: ${clp(p.totalPagar)}
+              </span>
+            </div>
+          `;
+        } else {
+          resultBadge = `
+            <div class="text-right">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Crédito: ${clp(Math.abs(p.totalPagar))}
+              </span>
+              <div class="text-[10px] text-emerald-600 font-mono font-bold">${(Math.abs(p.totalPagar) / appState.utm).toFixed(2)} UTM</div>
+            </div>
+          `;
+        }
+
+        // WhatsApp direct link
+        const waMsg = buildWhatsAppMessage(c, p);
+        const waUrl = c.phone ? `https://wa.me/${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}` : null;
+
+        const row = document.createElement('tr');
+        row.className = `hover:bg-slate-50 transition border-b border-slate-100 ${c.archived ? 'opacity-50 bg-slate-50/50' : ''}`;
+        row.innerHTML = `
+          <!-- Contribuyente -->
+          <td class="py-3 px-4">
+            <div class="flex items-center space-x-2">
+              <button onclick="openClientDossier('${c.id}')" title="Abrir Carpeta Histórica, Gráficos y Pagos Anteriores" class="font-extrabold text-slate-800 hover:text-indigo-600 transition text-left flex flex-col group">
+                <span class="text-xs sm:text-sm tracking-tight leading-tight group-hover:underline flex items-center space-x-1.5">
+                  <span>${c.name}</span>
+                  <i data-lucide="folder-open" class="w-3.5 h-3.5 text-amber-500 opacity-90 inline"></i>
+                </span>
+                <span class="text-[11px] font-mono text-slate-400 font-bold">${c.rut}</span>
+              </button>
+              ${c.archived ? '<span class="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold uppercase">Archivado</span>' : ''}
+            </div>
+          </td>
+
+          <!-- Régimen & Vencimiento -->
+          <td class="py-3 px-3">
+            <div class="space-y-1">
+              <span class="inline-block text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">${c.regime || 'ProPyme'}</span>
+              <div>
+                <span class="inline-flex items-center space-x-1 text-[11px] font-bold ${c.deadlineDay == 12 ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-indigo-700 bg-indigo-50 border border-indigo-200'} px-2 py-0.5 rounded-md">
+                  <i data-lucide="calendar" class="w-3 h-3"></i>
+                  <span>Día ${c.deadlineDay}</span>
+                </span>
+              </div>
+            </div>
+          </td>
+
+          <!-- Débito Fiscal -->
+          <td class="py-3 px-3 text-right font-mono font-semibold text-slate-700">
+            ${clp(debitoTotal)}
+          </td>
+
+          <!-- Crédito Fiscal Compras -->
+          <td class="py-3 px-3 text-right font-mono font-semibold text-slate-700">
+            ${clp(creditoCompras)}
+          </td>
+
+          <!-- Remanente Ant. -->
+          <td class="py-3 px-3 text-right font-mono font-semibold text-slate-500">
+            ${remanentePesos > 0 ? `<span class="text-emerald-700 font-bold">${clp(remanentePesos)}</span>` : '$ 0'}
+          </td>
+
+          <!-- PPM + Retención -->
+          <td class="py-3 px-3 text-right font-mono text-slate-600">
+            ${ppmYRet > 0 ? clp(ppmYRet) : '$ 0'}
+          </td>
+
+          <!-- Resultado F29 -->
+          <td class="py-3 px-4">
+            ${resultBadge}
+          </td>
+
+          <!-- Acciones -->
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center space-x-1.5">
+              <!-- Botón Carpeta Histórica & Gráficos -->
+              <button onclick="openClientDossier('${c.id}')" title="Ver Carpeta Histórica, Gráficos y Pagos Anteriores de ${c.name}" class="bg-amber-50 hover:bg-amber-100 text-amber-800 p-2 rounded-xl border border-amber-200 font-bold transition flex items-center space-x-1">
+                <i data-lucide="folder-clock" class="w-4 h-4 text-amber-600"></i>
+                <span class="text-xs hidden lg:inline">Carpeta</span>
+              </button>
+
+              <!-- Botón Abrir F29 -->
+              <button onclick="openModalF29('${c.id}')" title="Abrir y Editar F29 (Hoja de cálculo)" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 p-2 rounded-xl border border-indigo-200 font-bold transition flex items-center space-x-1">
+                <i data-lucide="calculator" class="w-4 h-4"></i>
+                <span class="text-xs hidden md:inline">F29</span>
+              </button>
+
+              <!-- Botón Imprimir Comprobante PDF -->
+              <button onclick="printClientVoucher('${c.id}')" title="Imprimir o Descargar Comprobante PDF para el cliente" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl border border-slate-200 font-bold transition inline-flex items-center">
+                <i data-lucide="printer" class="w-4 h-4 text-indigo-600"></i>
+              </button>
+
+              <!-- Botón WhatsApp -->
+              ${waUrl ? `
+                <a href="${waUrl}" target="_blank" title="Enviar informe a ${c.phone} por WhatsApp" class="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl shadow-sm transition inline-flex items-center">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                </a>
+              ` : `
+                <button onclick="alert('Este cliente no tiene teléfono registrado. Edita su ficha para agregar su WhatsApp.'); openModalEditClient('${c.id}');" title="Sin WhatsApp registrado" class="bg-slate-100 text-slate-400 p-2 rounded-xl transition inline-flex items-center">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                </button>
+              `}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      lucide.createIcons();
+    }
+
+    // --- CONSTRUCTOR DE MENSAJES WHATSAPP PROFESIONALES ---
+    function buildWhatsAppMessage(client, periodData) {
+      const [year, month] = appState.period.split('-');
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const monthStr = monthNames[Number(month)];
+
+      if (periodData.isZero) {
+        return `Estimado(a) *${client.name}*,\nLe saludamos del equipo contable de *Marlene*.\n\nLe informamos que su declaración de IVA (F29) correspondiente al período *${monthStr} ${year}* fue determinada *SIN MOVIMIENTO* (sin ventas ni compras gravadas).\n\nCualquier duda o consulta, quedamos a su entera disposición. ¡Saludos!`;
+      }
+
+      if (periodData.totalPagar < 0) {
+        const creditPesos = clp(Math.abs(periodData.totalPagar));
+        const creditUtm = (Math.abs(periodData.totalPagar) / appState.utm).toFixed(2);
+        return `Estimado(a) *${client.name}*,\nLe saludamos del equipo contable de *Marlene*.\n\nLe informamos el resumen de su F29 para el período *${monthStr} ${year}*:\n\n🎉 *No tiene impuesto a pagar este mes.*\n✅ *Crédito Fiscal a Favor (Remanente):* ${creditPesos} (${creditUtm} UTM)\nEste saldo queda a su favor para descontar de futuros meses.\n\nQuedamos atentos a cualquier consulta. ¡Que tenga un excelente día!`;
+      }
+
+      // Impuesto a pagar
+      const totalPesos = clp(periodData.totalPagar);
+      const limitDate = `${client.deadlineDay} de ${monthNames[Number(month) === 12 ? 1 : Number(month) + 1]}`;
+      return `Estimado(a) *${client.name}*,\nLe saludamos del equipo contable de *Marlene*.\n\nLe informamos el resumen de su cálculo F29 correspondiente al período *${monthStr} ${year}*:\n\n💵 *Total Impuesto a Pagar:* *${totalPesos}*\n📅 *Fecha límite de pago:* *${limitDate}*\n\nPor favor confirmar cuando realice el pago o si requiere asistencia con el cupón de pago del SII.\n\n¡Muchas gracias!`;
+    }
+
+    // --- MODAL F29: EDICIÓN Y MATEMÁTICA ---
+    let activeClientF29 = null;
+
+    function openModalF29(clientId) {
+      const client = appState.clients.find(c => c.id === clientId);
+      if (!client) return;
+      activeClientF29 = client;
+
+      const p = getClientPeriodData(client, appState.period);
+      const v = p.ventas || {};
+      const c = p.compras || {};
+
+      document.getElementById('modal-client-name').innerText = client.name;
+      document.getElementById('modal-client-rut').innerText = client.rut;
+      document.getElementById('modal-client-period').innerText = appState.period;
+      document.getElementById('modal-utm-display').innerText = clp(appState.utm);
+
+      document.getElementById('input-ppm-rate').value = client.ppmRate || 1.50;
+      document.getElementById('input-ret2-rate').value = client.ret2Rate || 15.25;
+
+      // Ventas
+      document.getElementById('vta-boletas-neto').value = v.boletasNeto || '';
+      document.getElementById('vta-boletas-iva').value = v.boletasIva || '';
+      document.getElementById('vta-vouchers-neto').value = v.vouchersNeto || '';
+      document.getElementById('vta-vouchers-iva').value = v.vouchersIva || '';
+      document.getElementById('vta-facturas-neto').value = v.facturasNeto || '';
+      document.getElementById('vta-facturas-iva').value = v.facturasIva || '';
+      document.getElementById('vta-nc-neto').value = v.ncNeto || '';
+      document.getElementById('vta-nc-iva').value = v.ncIva || '';
+      document.getElementById('vta-exenta').value = v.exenta || '';
+      document.getElementById('vta-otro-impto-valor').value = v.otroImpuestoValor || '';
+
+      // Compras
+      document.getElementById('cmp-facturas-neto').value = c.facturasNeto || '';
+      document.getElementById('cmp-facturas-iva').value = c.facturasIva || '';
+      document.getElementById('cmp-nc-neto').value = c.ncNeto || '';
+      document.getElementById('cmp-nc-iva').value = c.ncIva || '';
+      document.getElementById('cmp-remanente-utm').value = c.remanenteUtm || '';
+      document.getElementById('cmp-remanente-pesos').value = c.remanentePesos || '';
+      document.getElementById('cmp-exenta').value = c.exenta || '';
+      document.getElementById('cmp-otro-impto-valor').value = c.otroImpuestoValor || '';
+
+      // Impuestos
+      document.getElementById('input-ppm-pagar').value = p.ppmPagar || '';
+      document.getElementById('input-ret2-pagar').value = p.ret2Pagar || '';
+
+      // Resetear a pestaña 1 (Cálculo) y preparar lista RCV
+      switchF29Tab('calc');
+      renderRcvDocumentsTable();
+
+      calculateModalF29();
+      document.getElementById('modal-f29').classList.remove('hidden');
+    }
+
+    function closeModalF29() {
+      document.getElementById('modal-f29').classList.add('hidden');
+      activeClientF29 = null;
+    }
+
+    // Calcular IVA automáticamente al tipear el neto (19%)
+    function calcVatFromNet(fieldPrefix) {
+      const neto = Number(document.getElementById(`${fieldPrefix}-neto`).value) || 0;
+      const ivaField = document.getElementById(`${fieldPrefix}-iva`);
+      ivaField.value = Math.round(neto * 0.19);
+      calculateModalF29();
+    }
+
+    // Calcular pesos desde UTM de remanente
+    function calcRemanenteFromUtm() {
+      const utmVal = Number(document.getElementById('cmp-remanente-utm').value) || 0;
+      document.getElementById('cmp-remanente-pesos').value = Math.round(utmVal * appState.utm);
+      calculateModalF29();
+    }
+
+    // Cálculo en vivo dentro del Modal F29
+    function calculateModalF29() {
+      // Ventas
+      const bIva = Number(document.getElementById('vta-boletas-iva').value) || 0;
+      const voIva = Number(document.getElementById('vta-vouchers-iva').value) || 0;
+      const fIva = Number(document.getElementById('vta-facturas-iva').value) || 0;
+      const ncVIva = Number(document.getElementById('vta-nc-iva').value) || 0;
+      const sumDebito = bIva + voIva + fIva - ncVIva;
+      document.getElementById('display-sum-debito').innerText = clp(sumDebito);
+
+      // Base PPM (Ventas netas afectas)
+      const bNet = Number(document.getElementById('vta-boletas-neto').value) || 0;
+      const voNet = Number(document.getElementById('vta-vouchers-neto').value) || 0;
+      const fNet = Number(document.getElementById('vta-facturas-neto').value) || 0;
+      const ncVNet = Number(document.getElementById('vta-nc-neto').value) || 0;
+      const baseVentasNetas = Math.max(0, bNet + voNet + fNet - ncVNet);
+      document.getElementById('display-ppm-base').innerText = baseVentasNetas.toLocaleString('es-CL');
+
+      // Si el campo PPM a pagar está vacío o se calcula por primera vez, sugerir tasa
+      const ppmRate = Number(document.getElementById('input-ppm-rate').value) || 1.5;
+      if (!document.getElementById('input-ppm-pagar').value && baseVentasNetas > 0) {
+        document.getElementById('input-ppm-pagar').value = Math.round(baseVentasNetas * (ppmRate / 100));
+      }
+
+      // Compras
+      const cmpFIva = Number(document.getElementById('cmp-facturas-iva').value) || 0;
+      const cmpNcIva = Number(document.getElementById('cmp-nc-iva').value) || 0;
+      const remanentePesos = Number(document.getElementById('cmp-remanente-pesos').value) || 0;
+      const sumCredito = cmpFIva - cmpNcIva + remanentePesos;
+      document.getElementById('display-sum-credito').innerText = clp(sumCredito);
+
+      // Impuestos
+      const ppmPagar = Number(document.getElementById('input-ppm-pagar').value) || 0;
+      const ret2Pagar = Number(document.getElementById('input-ret2-pagar').value) || 0;
+      const vtaOtroImpto = Number(document.getElementById('vta-otro-impto-valor').value) || 0;
+
+      // Balance IVA
+      const balanceIva = sumDebito - sumCredito;
+      const totalF29 = balanceIva + ppmPagar + ret2Pagar + vtaOtroImpto;
+
+      // Renderizar Caja de Resultado
+      const box = document.getElementById('box-result-summary');
+      const label = document.getElementById('result-label');
+      const amount = document.getElementById('result-amount');
+      const detail = document.getElementById('result-detail');
+
+      if (sumDebito === 0 && sumCredito === 0 && ppmPagar === 0 && ret2Pagar === 0) {
+        box.className = 'rounded-2xl p-5 border border-slate-300 bg-slate-100 text-slate-800';
+        label.innerText = 'Declaración F29 Sin Movimiento';
+        amount.innerText = '$ 0';
+        detail.innerText = 'No se registran compras, ventas ni impuestos en el periodo.';
+      } else if (totalF29 > 0) {
+        box.className = 'rounded-2xl p-5 border border-rose-200 bg-rose-50 text-rose-900';
+        label.innerText = 'Total Impuesto Líquido a Pagar (F29)';
+        amount.innerText = clp(totalF29);
+        detail.innerText = `Débito ($${clp(sumDebito)}) supera al crédito. Se incluye PPM ($${clp(ppmPagar)}) y Retención ($${clp(ret2Pagar)}).`;
+      } else {
+        box.className = 'rounded-2xl p-5 border border-emerald-200 bg-emerald-50 text-emerald-950';
+        label.innerText = '🎉 Crédito Remanente a Favor del Contribuyente';
+        const absVal = Math.abs(totalF29);
+        const utmEquiv = (absVal / appState.utm).toFixed(2);
+        amount.innerText = clp(absVal);
+        detail.innerText = `No paga impuesto este mes. Queda un saldo de ${utmEquiv} UTM a favor para el siguiente mes.`;
+      }
+    }
+
+    function saveModalF29() {
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+
+      p.ventas = {
+        boletasNeto: Number(document.getElementById('vta-boletas-neto').value) || 0,
+        boletasIva: Number(document.getElementById('vta-boletas-iva').value) || 0,
+        vouchersNeto: Number(document.getElementById('vta-vouchers-neto').value) || 0,
+        vouchersIva: Number(document.getElementById('vta-vouchers-iva').value) || 0,
+        facturasNeto: Number(document.getElementById('vta-facturas-neto').value) || 0,
+        facturasIva: Number(document.getElementById('vta-facturas-iva').value) || 0,
+        ncNeto: Number(document.getElementById('vta-nc-neto').value) || 0,
+        ncIva: Number(document.getElementById('vta-nc-iva').value) || 0,
+        exenta: Number(document.getElementById('vta-exenta').value) || 0,
+        otroImpuestoValor: Number(document.getElementById('vta-otro-impto-valor').value) || 0
+      };
+
+      p.compras = {
+        facturasNeto: Number(document.getElementById('cmp-facturas-neto').value) || 0,
+        facturasIva: Number(document.getElementById('cmp-facturas-iva').value) || 0,
+        ncNeto: Number(document.getElementById('cmp-nc-neto').value) || 0,
+        ncIva: Number(document.getElementById('cmp-nc-iva').value) || 0,
+        remanenteUtm: Number(document.getElementById('cmp-remanente-utm').value) || 0,
+        remanentePesos: Number(document.getElementById('cmp-remanente-pesos').value) || 0,
+        exenta: Number(document.getElementById('cmp-exenta').value) || 0,
+        otroImpuestoValor: Number(document.getElementById('cmp-otro-impto-valor').value) || 0
+      };
+
+      p.ppmPagar = Number(document.getElementById('input-ppm-pagar').value) || 0;
+      p.ret2Pagar = Number(document.getElementById('input-ret2-pagar').value) || 0;
+
+      activeClientF29.ppmRate = Number(document.getElementById('input-ppm-rate').value) || 1.5;
+      activeClientF29.ret2Rate = Number(document.getElementById('input-ret2-rate').value) || 15.25;
+
+      recalculatePeriodData(p);
+      saveState();
+      closeModalF29();
+    }
+
+    function markAsZeroMovement() {
+      // Limpiar campos
+      document.querySelectorAll('#modal-f29 input[type="number"]').forEach(input => {
+        if (!input.id.includes('rate')) input.value = '';
+      });
+      calculateModalF29();
+    }
+
+    function sendModalWhatsApp() {
+      if (!activeClientF29) return;
+      saveModalF29();
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      const msg = buildWhatsAppMessage(activeClientF29, p);
+      if (activeClientF29.phone) {
+        window.open(`https://wa.me/${activeClientF29.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+      } else {
+        alert('Por favor registra el número de teléfono del cliente en su ficha.');
+      }
+    }
+
+    // --- GESTIÓN DE PESTAÑAS F29 Y DETALLE RCV ---
+    function switchF29Tab(tab) {
+      const btnCalc = document.getElementById('btn-f29-tab-calc');
+      const btnRcv = document.getElementById('btn-f29-tab-rcv');
+      const contentCalc = document.getElementById('tab-f29-calc-content');
+      const contentRcv = document.getElementById('tab-f29-rcv-content');
+
+      if (!btnCalc || !btnRcv || !contentCalc || !contentRcv) return;
+
+      if (tab === 'calc') {
+        contentCalc.classList.remove('hidden');
+        contentRcv.classList.add('hidden');
+        btnCalc.className = 'px-4 py-2 text-xs font-bold rounded-t-xl bg-white text-indigo-700 border-t border-l border-r border-slate-200 flex items-center space-x-1.5 shadow-sm';
+        btnRcv.className = 'px-4 py-2 text-xs font-bold rounded-t-xl text-slate-600 hover:text-slate-900 flex items-center space-x-1.5';
+      } else {
+        contentCalc.classList.add('hidden');
+        contentRcv.classList.remove('hidden');
+        btnRcv.className = 'px-4 py-2 text-xs font-bold rounded-t-xl bg-white text-emerald-800 border-t border-l border-r border-slate-200 flex items-center space-x-1.5 shadow-sm';
+        btnCalc.className = 'px-4 py-2 text-xs font-bold rounded-t-xl text-slate-600 hover:text-slate-900 flex items-center space-x-1.5';
+        renderRcvDocumentsTable();
+      }
+      lucide.createIcons();
+    }
+
+    function renderRcvDocumentsTable() {
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      if (!p.documents) p.documents = [];
+
+      const operacionFilter = (document.getElementById('select-rcv-operacion') && document.getElementById('select-rcv-operacion').value) || 'all';
+      const tbody = document.getElementById('rcv-documents-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      let filteredDocs = p.documents;
+      if (operacionFilter !== 'all') {
+        filteredDocs = p.documents.filter(d => d.operacion === operacionFilter);
+      }
+
+      // Totales
+      let sumNeto = 0;
+      let sumExento = 0;
+      let sumIva = 0;
+      let sumOtros = 0;
+      let sumTotal = 0;
+
+      filteredDocs.forEach(d => {
+        sumNeto += (Number(d.montoNeto) || 0);
+        sumExento += (Number(d.montoExento) || 0);
+        sumIva += (Number(d.montoIva) || 0);
+        sumOtros += (Number(d.otroImpuestoValor) || 0);
+        sumTotal += (Number(d.montoTotal) || 0);
+      });
+
+      if (document.getElementById('rcv-kpi-docs')) document.getElementById('rcv-kpi-docs').innerText = filteredDocs.length;
+      if (document.getElementById('rcv-kpi-neto')) document.getElementById('rcv-kpi-neto').innerText = clp(sumNeto);
+      if (document.getElementById('rcv-kpi-exento')) document.getElementById('rcv-kpi-exento').innerText = clp(sumExento);
+      if (document.getElementById('rcv-kpi-iva')) document.getElementById('rcv-kpi-iva').innerText = clp(sumIva);
+      if (document.getElementById('rcv-kpi-otros')) document.getElementById('rcv-kpi-otros').innerText = clp(sumOtros);
+      if (document.getElementById('rcv-kpi-total')) document.getElementById('rcv-kpi-total').innerText = clp(sumTotal);
+      if (document.getElementById('badge-rcv-count')) document.getElementById('badge-rcv-count').innerText = p.documents.length;
+
+      if (filteredDocs.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="11" class="py-8 text-center text-slate-400">
+              <i data-lucide="file-question" class="w-8 h-8 mx-auto text-slate-300 mb-1"></i>
+              <p class="font-medium text-xs">No hay documentos registrados para este filtro.</p>
+              <p class="text-[11px] text-slate-400">Puedes agregar facturas o boletas usando el botón "Agregar Documento" o importando el archivo del SII.</p>
+            </td>
+          </tr>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      filteredDocs.forEach(doc => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 transition border-b border-slate-100 text-xs';
+        
+        const isCompra = doc.operacion === 'COMPRA';
+        const opBadge = isCompra ? 
+          `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">COMPRA</span>` :
+          `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200">VENTA</span>`;
+
+        let tipoDocBadge = `<span class="font-mono font-bold text-slate-700">${doc.tipoDoc}</span>`;
+        if (doc.tipoDoc == 33) tipoDocBadge += ` <span class="text-[10px] text-slate-500 font-semibold">Factura</span>`;
+        else if (doc.tipoDoc == 61) tipoDocBadge += ` <span class="text-[10px] text-rose-600 font-bold">NC</span>`;
+        else if (doc.tipoDoc == 39) tipoDocBadge += ` <span class="text-[10px] text-indigo-600 font-semibold">Boleta</span>`;
+        else if (doc.tipoDoc == 48) tipoDocBadge += ` <span class="text-[10px] text-emerald-600 font-semibold">Voucher</span>`;
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 whitespace-nowrap">${opBadge}</td>
+          <td class="py-2.5 px-2 whitespace-nowrap">${tipoDocBadge}</td>
+          <td class="py-2.5 px-2 font-mono font-bold text-slate-800">${doc.folio || '-'}</td>
+          <td class="py-2.5 px-2 text-slate-500 whitespace-nowrap">${doc.fecha || '-'}</td>
+          <td class="py-2.5 px-3">
+            <div class="font-bold text-slate-800">${doc.razonSocial || '-'}</div>
+            <div class="font-mono text-[10px] text-slate-400 font-semibold">${doc.rut || '-'}</div>
+          </td>
+          <td class="py-2.5 px-2 text-right font-mono text-amber-800 font-semibold">${(Number(doc.montoExento) > 0) ? clp(doc.montoExento) : '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-700">${clp(doc.montoNeto || 0)}</td>
+          <td class="py-2.5 px-2 text-right font-mono font-bold ${isCompra ? 'text-emerald-700' : 'text-indigo-700'}">${clp(doc.montoIva || 0)}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-indigo-900 font-bold">${(Number(doc.otroImpuestoValor) > 0) ? clp(doc.otroImpuestoValor) : '-'}</td>
+          <td class="py-2.5 px-3 text-right font-mono font-extrabold text-slate-900">${clp(doc.montoTotal || 0)}</td>
+          <td class="py-2.5 px-2 text-center">
+            <button onclick="deleteRcvDocument('${doc.id}')" title="Borrar documento que no corresponde y recalcular IVA" class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      lucide.createIcons();
+    }
+
+    function deleteRcvDocument(docId) {
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      if (!p.documents) return;
+
+      const docIndex = p.documents.findIndex(d => d.id === docId);
+      if (docIndex === -1) return;
+
+      const doc = p.documents[docIndex];
+      const confirmMsg = `¿Deseas eliminar este documento que no corresponde?\n\n• ${doc.operacion}: ${doc.tipoDocNombre || doc.tipoDoc} Folio ${doc.folio}\n• ${doc.razonSocial} (${doc.rut})\n• Neto: ${clp(doc.montoNeto)} | IVA: ${clp(doc.montoIva)}\n• Total: ${clp(doc.montoTotal)}\n\nAl borrarlo, se recalculará automáticamente la planilla F29 y el IVA a pagar.`;
+
+      if (!confirm(confirmMsg)) return;
+
+      p.documents.splice(docIndex, 1);
+      recalculateFromDocuments(p);
+      saveState();
+
+      // Actualizar inputs del modal en la pestaña de cálculo
+      updateModalInputsFromPeriod(p);
+      calculateModalF29();
+      renderRcvDocumentsTable();
+
+      alert(`✅ Documento eliminado con éxito. Los totales de IVA y el F29 de ${activeClientF29.name} se han recalculado.`);
+    }
+
+    function recalculateFromDocuments(p) {
+      if (!p.documents) return;
+
+      let bNet = 0, bIva = 0, bEx = 0;
+      let voNet = 0, voIva = 0;
+      let fvNet = 0, fvIva = 0, fvEx = 0;
+      let ncvNet = 0, ncvIva = 0;
+      let vOtroImpto = 0;
+
+      let fcNet = 0, fcIva = 0, fcEx = 0;
+      let nccNet = 0, nccIva = 0;
+      let cOtroImpto = 0;
+
+      p.documents.forEach(d => {
+        const op = d.operacion;
+        const tipo = String(d.tipoDoc);
+        const net = Number(d.montoNeto) || 0;
+        const iva = Number(d.montoIva) || 0;
+        const ex = Number(d.montoExento) || 0;
+        const otro = Number(d.otroImpuestoValor) || 0;
+
+        if (op === 'VENTA') {
+          vOtroImpto += otro;
+          if (tipo === '39' || tipo === '35') {
+            bNet += net; bIva += iva; bEx += ex;
+          } else if (tipo === '48') {
+            voNet += net; voIva += iva;
+          } else if (tipo === '61') {
+            ncvNet += net; ncvIva += iva;
+          } else {
+            // Facturas 33, 34, etc.
+            fvNet += net; fvIva += iva; fvEx += ex;
+          }
+        } else if (op === 'COMPRA') {
+          cOtroImpto += otro;
+          if (tipo === '61') {
+            nccNet += net; nccIva += iva;
+          } else {
+            // Facturas 33, 34, etc.
+            fcNet += net; fcIva += iva; fcEx += ex;
+          }
+        }
+      });
+
+      // Preservar remanentes
+      const prevUtm = (p.compras && p.compras.remanenteUtm) || 0;
+      const prevPesos = (p.compras && p.compras.remanentePesos) || 0;
+
+      p.ventas = {
+        boletasNeto: bNet,
+        boletasIva: bIva,
+        vouchersNeto: voNet,
+        vouchersIva: voIva,
+        facturasNeto: fvNet,
+        facturasIva: fvIva,
+        ncNeto: ncvNet,
+        ncIva: ncvIva,
+        exenta: bEx + fvEx,
+        otroImpuestoValor: vOtroImpto
+      };
+
+      p.compras = {
+        facturasNeto: fcNet,
+        facturasIva: fcIva,
+        ncNeto: nccNet,
+        ncIva: nccIva,
+        remanenteUtm: prevUtm,
+        remanentePesos: prevPesos,
+        exenta: fcEx,
+        otroImpuestoValor: cOtroImpto
+      };
+
+      recalculatePeriodData(p);
+    }
+
+    function updateModalInputsFromPeriod(p) {
+      const v = p.ventas || {};
+      const c = p.compras || {};
+
+      document.getElementById('vta-boletas-neto').value = v.boletasNeto || '';
+      document.getElementById('vta-boletas-iva').value = v.boletasIva || '';
+      document.getElementById('vta-vouchers-neto').value = v.vouchersNeto || '';
+      document.getElementById('vta-vouchers-iva').value = v.vouchersIva || '';
+      document.getElementById('vta-facturas-neto').value = v.facturasNeto || '';
+      document.getElementById('vta-facturas-iva').value = v.facturasIva || '';
+      document.getElementById('vta-nc-neto').value = v.ncNeto || '';
+      document.getElementById('vta-nc-iva').value = v.ncIva || '';
+      document.getElementById('vta-exenta').value = v.exenta || '';
+      document.getElementById('vta-otro-impto-valor').value = v.otroImpuestoValor || '';
+
+      document.getElementById('cmp-facturas-neto').value = c.facturasNeto || '';
+      document.getElementById('cmp-facturas-iva').value = c.facturasIva || '';
+      document.getElementById('cmp-nc-neto').value = c.ncNeto || '';
+      document.getElementById('cmp-nc-iva').value = c.ncIva || '';
+      document.getElementById('cmp-remanente-utm').value = c.remanenteUtm || '';
+      document.getElementById('cmp-remanente-pesos').value = c.remanentePesos || '';
+      document.getElementById('cmp-exenta').value = c.exenta || '';
+      document.getElementById('cmp-otro-impto-valor').value = c.otroImpuestoValor || '';
+    }
+
+    function promptAddManualDocument() {
+      if (!activeClientF29) return;
+      const op = prompt('Tipo de Operación:\nEscribe COMPRA (Factura/NC recibida) o VENTA (Factura/Boleta emitida):', 'COMPRA');
+      if (!op) return;
+      const cleanOp = op.trim().toUpperCase() === 'VENTA' ? 'VENTA' : 'COMPRA';
+
+      const tipoDoc = prompt('Código Tipo Documento SII:\n33 = Factura Electrónica\n61 = Nota de Crédito\n39 = Boleta Electrónica\n48 = Voucher Transbank', '33');
+      if (!tipoDoc) return;
+
+      const folio = prompt('Número de Folio:', '1001') || 'S/F';
+      const rut = prompt('RUT de la contraparte:', cleanOp === 'COMPRA' ? '76.123.456-7' : activeClientF29.rut) || '-';
+      const razonSocial = prompt('Razón Social / Proveedor o Cliente:', cleanOp === 'COMPRA' ? 'PROVEEDOR GENERAL' : activeClientF29.name) || '-';
+      const netoStr = prompt('Monto Neto ($):', '100000');
+      if (netoStr === null) return;
+      const neto = Number(netoStr.replace(/[^0-9]/g, '')) || 0;
+      const exentoStr = prompt('Monto Exento ($) (dejar en 0 si no tiene):', '0');
+      const exento = Number(exentoStr ? exentoStr.replace(/[^0-9]/g, '') : 0) || 0;
+      const iva = Math.round(neto * 0.19);
+      const otrosStr = prompt('Valor Otro Impuesto ($) (dejar en 0 si no tiene):', '0');
+      const otros = Number(otrosStr ? otrosStr.replace(/[^0-9]/g, '') : 0) || 0;
+      const total = neto + exento + iva + otros;
+
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      if (!p.documents) p.documents = [];
+
+      const newDoc = {
+        id: 'doc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        operacion: cleanOp,
+        tipoDoc: tipoDoc,
+        tipoDocNombre: tipoDoc == '33' ? 'Factura Electrónica' : (tipoDoc == '61' ? 'Nota de Crédito' : (tipoDoc == '39' ? 'Boleta Electrónica' : 'Comprobante Electrónico')),
+        folio: folio,
+        fecha: new Date().toISOString().slice(0, 10),
+        rut: rut,
+        razonSocial: razonSocial.toUpperCase(),
+        montoExento: exento,
+        montoNeto: neto,
+        montoIva: iva,
+        otroImpuestoValor: otros,
+        montoTotal: total
+      };
+
+      p.documents.push(newDoc);
+      recalculateFromDocuments(p);
+      saveState();
+      updateModalInputsFromPeriod(p);
+      calculateModalF29();
+      renderRcvDocumentsTable();
+      alert(`✅ Documento agregado con éxito. Se recalculó el F29 de ${activeClientF29.name}.`);
+    }
+
+    function exportRcvToExcel() {
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      const docs = p.documents || [];
+
+      if (docs.length === 0) {
+        alert('No hay documentos registrados en el RCV para este cliente en el período actual.');
+        return;
+      }
+
+      const rows = docs.map(d => ({
+        'Operación': d.operacion,
+        'Tipo Doc': d.tipoDoc,
+        'Nombre Doc': d.tipoDocNombre || '',
+        'Folio': d.folio,
+        'Fecha Docto': d.fecha || '',
+        'RUT': d.rut,
+        'Razón Social': d.razonSocial,
+        'Monto Exento ($)': d.montoExento || 0,
+        'Monto Neto ($)': d.montoNeto || 0,
+        'IVA ($)': d.montoIva || 0,
+        'Valor Otro Impuesto ($)': d.otroImpuestoValor || 0,
+        'Monto Total ($)': d.montoTotal || 0
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Detalle RCV');
+      const safeName = activeClientF29.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+      XLSX.writeFile(wb, `RCV_${safeName}_${appState.period}.xlsx`);
+    }
+
+    function printRcvReport() {
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      const docs = p.documents || [];
+      const [year, month] = appState.period.split('-');
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const monthStr = monthNames[Number(month)];
+      const today = new Date().toLocaleDateString('es-CL');
+
+      let sumNeto = 0, sumExento = 0, sumIva = 0, sumOtros = 0, sumTotal = 0;
+
+      const rowsHtml = docs.map((d, idx) => {
+        sumNeto += (Number(d.montoNeto) || 0);
+        sumExento += (Number(d.montoExento) || 0);
+        sumIva += (Number(d.montoIva) || 0);
+        sumOtros += (Number(d.otroImpuestoValor) || 0);
+        sumTotal += (Number(d.montoTotal) || 0);
+
+        return `
+          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px;">
+            <td style="padding: 5px 6px;">${idx + 1}</td>
+            <td style="padding: 5px 6px; font-weight: bold; color: ${d.operacion === 'COMPRA' ? '#047857' : '#4338ca'};">${d.operacion}</td>
+            <td style="padding: 5px 6px; font-family: monospace;">${d.tipoDoc} - ${d.folio}</td>
+            <td style="padding: 5px 6px;">${d.fecha || '-'}</td>
+            <td style="padding: 5px 6px; font-weight: bold;">${d.razonSocial}<br><span style="font-size: 9px; color: #64748b; font-family: monospace;">${d.rut}</span></td>
+            <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${(d.montoExento > 0) ? clp(d.montoExento) : '-'}</td>
+            <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${clp(d.montoNeto || 0)}</td>
+            <td style="padding: 5px 6px; text-align: right; font-family: monospace; font-weight: bold;">${clp(d.montoIva || 0)}</td>
+            <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${(d.otroImpuestoValor > 0) ? clp(d.otroImpuestoValor) : '-'}</td>
+            <td style="padding: 5px 6px; text-align: right; font-family: monospace; font-weight: bold;">${clp(d.montoTotal || 0)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const container = document.getElementById('printable-section');
+      container.innerHTML = `
+        <div style="font-family: Arial, sans-serif; color: #0f172a; padding: 20px; max-width: 900px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
+            <div>
+              <h2 style="margin: 0; font-size: 18px; font-weight: bold;">ESTUDIO CONTABLE MARLENE</h2>
+              <p style="margin: 2px 0 0; font-size: 12px; color: #475569;">Informe Detalle de Documentos de Compras y Ventas (RCV)</p>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #64748b;">
+              Fecha: ${today}<br>Total Doctos: ${docs.length}
+            </div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 15px; font-size: 11px;">
+            <strong>Contribuyente:</strong> ${activeClientF29.name} &nbsp;|&nbsp; <strong>RUT:</strong> ${activeClientF29.rut} &nbsp;|&nbsp; <strong>Período:</strong> ${monthStr.toUpperCase()} ${year} (UTM: ${clp(appState.utm)})
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+            <thead>
+              <tr style="background: #e2e8f0; text-transform: uppercase; font-size: 9px; text-align: left;">
+                <th style="padding: 6px;">#</th>
+                <th style="padding: 6px;">Op.</th>
+                <th style="padding: 6px;">Docto/Folio</th>
+                <th style="padding: 6px;">Fecha</th>
+                <th style="padding: 6px;">Razón Social / RUT</th>
+                <th style="padding: 6px; text-align: right;">Exento</th>
+                <th style="padding: 6px; text-align: right;">Neto</th>
+                <th style="padding: 6px; text-align: right;">IVA</th>
+                <th style="padding: 6px; text-align: right;">Otro Imp.</th>
+                <th style="padding: 6px; text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || '<tr><td colspan="10" style="text-align: center; padding: 15px;">No hay documentos registrados.</td></tr>'}
+            </tbody>
+            <tfoot>
+              <tr style="background: #f1f5f9; font-weight: bold; border-top: 2px solid #0f172a; font-size: 10px;">
+                <td colspan="5" style="padding: 8px;">TOTALES RCV PERÍODO</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumExento)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumNeto)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumIva)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumOtros)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div style="margin-top: 30px; font-size: 10px; color: #64748b;">
+            * Documento de respaldo contable emitido para conciliación del Formulario 29 con el Registro de Compras y Ventas del SII.
+          </div>
+        </div>
+      `;
+      window.print();
+    }
+
+    // --- LECTOR DE ARCHIVOS SII (EXCEL / CSV / RCV) ---
+    function handleRcvFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = e.target.result;
+        try {
+          // Intentar parsear como texto CSV o mediante SheetJS
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+
+          parseRcvRowsIntoModal(rows);
+          alert('¡Archivo de SII procesado exitosamente! Los valores se han cargado en la planilla.');
+        } catch(err) {
+          console.error(err);
+          alert('Hubo un detalle al leer el archivo. Asegúrate de subir el archivo CSV o Excel descargado del SII.');
+        }
+      };
+      reader.readAsBinaryString(file);
+    }
+
+    function parseRcvRowsIntoModal(rows) {
+      if (!rows || rows.length === 0) return;
+      if (!activeClientF29) return;
+      const p = getClientPeriodData(activeClientF29, appState.period);
+      if (!p.documents) p.documents = [];
+
+      let hasHeader = false;
+      let colIdx = {};
+
+      // Detect header row
+      rows.forEach((row, rIdx) => {
+        if (!row || row.length === 0) return;
+        const line = row.map(c => String(c || '').toLowerCase().trim());
+        if (line.some(c => c.includes('folio') || c.includes('tipo doc') || c.includes('rut') || c.includes('razon social') || c.includes('monto neto'))) {
+          hasHeader = true;
+          line.forEach((cell, cIdx) => {
+            if (cell.includes('tipo doc')) colIdx.tipoDoc = cIdx;
+            else if (cell.includes('folio')) colIdx.folio = cIdx;
+            else if (cell.includes('fecha')) colIdx.fecha = cIdx;
+            else if (cell.includes('rut')) colIdx.rut = cIdx;
+            else if (cell.includes('razon') || cell.includes('social') || cell.includes('proveedor') || cell.includes('cliente')) colIdx.razonSocial = cIdx;
+            else if (cell.includes('exento')) colIdx.exento = cIdx;
+            else if (cell.includes('neto')) colIdx.neto = cIdx;
+            else if (cell.includes('iva')) colIdx.iva = cIdx;
+            else if (cell.includes('otro')) colIdx.otros = cIdx;
+            else if (cell.includes('total')) colIdx.total = cIdx;
+          });
+        }
+      });
+
+      // If detailed rows detected:
+      let parsedDocsCount = 0;
+      if (hasHeader && (colIdx.folio !== undefined || colIdx.neto !== undefined)) {
+        rows.forEach((row, rIdx) => {
+          if (!row || row.length === 0) return;
+          const text = row.join(' ').toLowerCase();
+          if (text.includes('folio') || text.includes('tipo doc')) return; // Header
+
+          const tipo = colIdx.tipoDoc !== undefined ? String(row[colIdx.tipoDoc] || '').match(/\d+/)?.[0] || '33' : '33';
+          const folio = colIdx.folio !== undefined ? row[colIdx.folio] : (rIdx + 1);
+          const rut = colIdx.rut !== undefined ? String(row[colIdx.rut] || '-') : '-';
+          const razon = colIdx.razonSocial !== undefined ? String(row[colIdx.razonSocial] || 'DOCUMENTO SII') : 'DOCUMENTO SII';
+          const fecha = colIdx.fecha !== undefined ? String(row[colIdx.fecha] || '') : new Date().toISOString().slice(0, 10);
+          
+          const cleanNum = (val) => {
+            if (typeof val === 'number') return val;
+            if (!val) return 0;
+            return Number(String(val).replace(/[^0-9.-]/g, '')) || 0;
+          };
+
+          const neto = colIdx.neto !== undefined ? cleanNum(row[colIdx.neto]) : 0;
+          const iva = colIdx.iva !== undefined ? cleanNum(row[colIdx.iva]) : Math.round(neto * 0.19);
+          const exento = colIdx.exento !== undefined ? cleanNum(row[colIdx.exento]) : 0;
+          const otros = colIdx.otros !== undefined ? cleanNum(row[colIdx.otros]) : 0;
+          const total = colIdx.total !== undefined ? cleanNum(row[colIdx.total]) : (neto + exento + iva + otros);
+
+          if (neto > 0 || iva > 0 || exento > 0 || total > 0) {
+            let op = 'COMPRA';
+            if (tipo === '39' || tipo === '48' || text.includes('venta') || text.includes('emitid')) {
+              op = 'VENTA';
+            }
+
+            p.documents.push({
+              id: 'doc-imp-' + Date.now() + '-' + rIdx,
+              operacion: op,
+              tipoDoc: tipo,
+              tipoDocNombre: tipo == '33' ? 'Factura Electrónica' : (tipo == '61' ? 'Nota de Crédito' : (tipo == '39' ? 'Boleta Electrónica' : 'Comprobante Electrónico')),
+              folio: folio,
+              fecha: fecha,
+              rut: rut,
+              razonSocial: razon.toUpperCase(),
+              montoExento: exento,
+              montoNeto: neto,
+              montoIva: iva,
+              otroImpuestoValor: otros,
+              montoTotal: total
+            });
+            parsedDocsCount++;
+          }
+        });
+
+        if (parsedDocsCount > 0) {
+          recalculateFromDocuments(p);
+          updateModalInputsFromPeriod(p);
+          calculateModalF29();
+          renderRcvDocumentsTable();
+          return;
+        }
+      }
+
+      // Resumen general si no fue formato tabla detallada
+      rows.forEach(row => {
+        if (!row || row.length === 0) return;
+        const text = row.join(' ').toLowerCase();
+
+        // Boleta electrónica (39)
+        if (text.includes('39') || text.includes('boleta electr')) {
+          const numbers = row.filter(cell => !isNaN(cell) && Number(cell) > 0).map(Number);
+          if (numbers.length >= 2) {
+            document.getElementById('vta-boletas-neto').value = numbers[numbers.length - 3] || numbers[0];
+            document.getElementById('vta-boletas-iva').value = numbers[numbers.length - 2] || numbers[1];
+          }
+        }
+
+        // Voucher / Comprobante de pago (48)
+        if (text.includes('48') || text.includes('comprobante pago')) {
+          const numbers = row.filter(cell => !isNaN(cell) && Number(cell) > 0).map(Number);
+          if (numbers.length >= 2) {
+            document.getElementById('vta-vouchers-neto').value = numbers[numbers.length - 3] || numbers[0];
+            document.getElementById('vta-vouchers-iva').value = numbers[numbers.length - 2] || numbers[1];
+          }
+        }
+
+        // Facturas de compra (33)
+        if (text.includes('facturas cr') || (text.includes('33') && text.includes('compra'))) {
+          const numbers = row.filter(cell => !isNaN(cell) && Number(cell) > 0).map(Number);
+          if (numbers.length >= 2) {
+            document.getElementById('cmp-facturas-neto').value = numbers[numbers.length - 3] || numbers[0];
+            document.getElementById('cmp-facturas-iva').value = numbers[numbers.length - 2] || numbers[1];
+          }
+        }
+
+        // Notas de crédito (61)
+        if (text.includes('61') || text.includes('nota de cr')) {
+          const numbers = row.filter(cell => !isNaN(cell) && Number(cell) > 0).map(Number);
+          if (numbers.length >= 2) {
+            if (text.includes('venta') || text.includes('emitid')) {
+              document.getElementById('vta-nc-neto').value = numbers[numbers.length - 3] || numbers[0];
+              document.getElementById('vta-nc-iva').value = numbers[numbers.length - 2] || numbers[1];
+            } else {
+              document.getElementById('cmp-nc-neto').value = numbers[numbers.length - 3] || numbers[0];
+              document.getElementById('cmp-nc-iva').value = numbers[numbers.length - 2] || numbers[1];
+            }
+          }
+        }
+      });
+
+      calculateModalF29();
+    }
+
+    // --- GESTIÓN DE CLIENTES: CREAR / EDITAR / ARCHIVAR ---
+    function openModalAddClient() {
+      document.getElementById('modal-client-title').innerText = 'Nuevo Contribuyente';
+      document.getElementById('client-form-id').value = '';
+      document.getElementById('form-client').reset();
+      document.getElementById('btn-toggle-archive-client').classList.add('hidden');
+      document.getElementById('modal-client').classList.remove('hidden');
+    }
+
+    function openModalEditClient(clientId) {
+      const client = appState.clients.find(c => c.id === clientId);
+      if (!client) return;
+
+      document.getElementById('modal-client-title').innerText = 'Ficha del Contribuyente';
+      document.getElementById('client-form-id').value = client.id;
+      document.getElementById('client-form-rut').value = client.rut;
+      document.getElementById('client-form-name').value = client.name;
+      document.getElementById('client-form-regime').value = client.regime || 'ProPyme 14 D3';
+      document.getElementById('client-form-deadline').value = client.deadlineDay || 20;
+      document.getElementById('client-form-phone').value = client.phone || '';
+      document.getElementById('client-form-email').value = client.email || '';
+      document.getElementById('client-form-ppm').value = client.ppmRate || 1.5;
+
+      const archiveBtn = document.getElementById('btn-toggle-archive-client');
+      const archiveText = document.getElementById('text-archive-btn');
+      archiveBtn.classList.remove('hidden');
+      if (client.archived) {
+        archiveText.innerText = 'Reactivar Cliente';
+        archiveBtn.className = 'text-emerald-600 hover:text-emerald-800 font-bold flex items-center space-x-1';
+      } else {
+        archiveText.innerText = 'Dar de Baja (Archivar sin borrar)';
+        archiveBtn.className = 'text-rose-600 hover:text-rose-800 font-bold flex items-center space-x-1';
+      }
+
+      document.getElementById('modal-client').classList.remove('hidden');
+    }
+
+    function closeModalClient() {
+      document.getElementById('modal-client').classList.add('hidden');
+    }
+
+    function handleSaveClient(event) {
+      event.preventDefault();
+      const id = document.getElementById('client-form-id').value;
+      const rut = document.getElementById('client-form-rut').value.trim();
+      const name = document.getElementById('client-form-name').value.trim();
+      const regime = document.getElementById('client-form-regime').value;
+      const deadlineDay = Number(document.getElementById('client-form-deadline').value);
+      const phone = document.getElementById('client-form-phone').value.trim();
+      const email = document.getElementById('client-form-email').value.trim();
+      const ppmRate = Number(document.getElementById('client-form-ppm').value) || 1.5;
+
+      if (id) {
+        const client = appState.clients.find(c => c.id === id);
+        if (client) {
+          client.rut = rut;
+          client.name = name;
+          client.regime = regime;
+          client.deadlineDay = deadlineDay;
+          client.phone = phone;
+          client.email = email;
+          client.ppmRate = ppmRate;
+        }
+      } else {
+        const newClient = {
+          id: 'cli-' + Date.now(),
+          rut,
+          name,
+          regime,
+          deadlineDay,
+          phone,
+          email,
+          ppmRate,
+          ret2Rate: 15.25,
+          archived: false,
+          periods: {}
+        };
+        appState.clients.push(newClient);
+      }
+
+      saveState();
+      closeModalClient();
+    }
+
+    function toggleArchiveClient() {
+      const id = document.getElementById('client-form-id').value;
+      const client = appState.clients.find(c => c.id === id);
+      if (!client) return;
+
+      client.archived = !client.archived;
+      saveState();
+      closeModalClient();
+      alert(client.archived ? 
+        `El cliente ${client.name} ha sido dado de baja. Su historial contable se conserva intacto.` : 
+        `El cliente ${client.name} ha sido reactivado en la nómina activa.`
+      );
+    }
+
+    // --- CARGA RÁPIDA (DESDE FOTOS / TEXTO / PLANILLAS) ---
+    function openModalQuickImport() {
+      document.getElementById('modal-quick-import').classList.remove('hidden');
+    }
+
+    function closeModalQuickImport() {
+      document.getElementById('modal-quick-import').classList.add('hidden');
+    }
+
+    function processQuickImport() {
+      const text = document.getElementById('text-quick-import').value;
+      const defaultDay = Number(document.getElementById('quick-import-default-day').value) || 20;
+
+      if (!text.trim()) {
+        alert('Por favor pega el texto extraído de tus fotos o listados de clientes.');
+        return;
+      }
+
+      // Regex para encontrar RUTs chilenos (con o sin puntos, con guion)
+      const rutRegex = /(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/g;
+      const lines = text.split('\n');
+      let created = 0;
+
+      lines.forEach(line => {
+        const match = line.match(rutRegex);
+        if (match) {
+          const rut = match[0].trim();
+          let name = line.replace(rut, '').replace(/[;,\t]/g, ' ').replace(/\+?569\d{8}/g, '').trim();
+          if (!name || name.length < 3) name = 'Contribuyente ' + rut;
+
+          // Teléfono si existe
+          const phoneMatch = line.match(/(\+?569\d{8}|\b9\d{8}\b)/);
+          const phone = phoneMatch ? (phoneMatch[0].startsWith('+') ? phoneMatch[0] : '+56' + phoneMatch[0]) : '';
+
+          // Verificar si ya existe
+          const existing = appState.clients.find(c => c.rut.replace(/[^0-9kK]/g, '') === rut.replace(/[^0-9kK]/g, ''));
+          if (!existing) {
+            appState.clients.push({
+              id: 'cli-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+              rut: rut,
+              name: name.toUpperCase(),
+              regime: 'ProPyme 14 D3',
+              deadlineDay: defaultDay,
+              phone: phone,
+              email: '',
+              ppmRate: 1.5,
+              ret2Rate: 15.25,
+              archived: false,
+              periods: {}
+            });
+            created++;
+          }
+        }
+      });
+
+      saveState();
+      closeModalQuickImport();
+      document.getElementById('text-quick-import').value = '';
+      alert(`¡Éxito! Se detectaron y crearon ${created} clientes nuevos en tu cartera.`);
+    }
+
+    // --- EXPORTAR A EXCEL (.XLSX) ---
+    function exportCurrentPeriodToExcel() {
+      const currentPeriod = appState.period;
+      const [year, month] = currentPeriod.split('-');
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const monthStr = monthNames[Number(month)];
+
+      const rows = appState.clients.map(c => {
+        const p = getClientPeriodData(c, currentPeriod);
+        const v = p.ventas || {};
+        const co = p.compras || {};
+        const debito = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+        const credito = (co.facturasIva || 0) - (co.ncIva || 0);
+        const remanentePesos = co.remanentePesos || 0;
+        const remanenteUtm = co.remanenteUtm || 0;
+        const ppm = p.ppmPagar || 0;
+        const ret2 = p.ret2Pagar || 0;
+        const total = p.totalPagar || 0;
+
+        let estado = 'Al Día';
+        if (c.archived) estado = 'Archivado / Baja';
+        else if (p.isZero) estado = 'Sin Movimiento';
+        else if (total > 0) estado = 'Paga Impuesto';
+        else if (total < 0) estado = 'Crédito a Favor';
+
+        return {
+          'RUT Contribuyente': c.rut,
+          'Razón Social': c.name,
+          'Régimen Tributario': c.regime || 'ProPyme 14 D3',
+          'Día Vencimiento': 'Día ' + c.deadlineDay,
+          'Ventas Débito Fiscal ($)': debito,
+          'Ventas Exentas ($)': v.exenta || 0,
+          'Otros Impuestos Venta ($)': v.otroImpuestoValor || 0,
+          'Compras Crédito Fiscal ($)': credito,
+          'Compras Exentas ($)': co.exenta || 0,
+          'Otros Impuestos Compra ($)': co.otroImpuestoValor || 0,
+          'Remanente Mes Ant. (UTM)': remanenteUtm,
+          'Remanente Mes Ant. ($)': remanentePesos,
+          'PPM a Pagar ($)': ppm,
+          'Retención 2da Cat. ($)': ret2,
+          'Resultado Líquido F29 ($)': total,
+          'Estado Periodo': estado,
+          'Teléfono WhatsApp': c.phone || 'Sin registrar',
+          'Correo': c.email || ''
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `F29 ${monthStr} ${year}`);
+      XLSX.writeFile(wb, `Nomina_F29_Conta_Marlene_${currentPeriod}.xlsx`);
+    }
+
+    // --- IMPRESIÓN Y GENERACIÓN DE PDF ---
+    function printClientVoucher(clientId) {
+      const client = appState.clients.find(c => c.id === clientId);
+      if (!client) return;
+
+      const p = getClientPeriodData(client, appState.period);
+      const v = p.ventas || {};
+      const co = p.compras || {};
+      const [year, month] = appState.period.split('-');
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const monthStr = monthNames[Number(month)];
+
+      const debito = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+      const credito = (co.facturasIva || 0) - (co.ncIva || 0);
+      const remanentePesos = co.remanentePesos || 0;
+      const remanenteUtm = co.remanenteUtm || 0;
+      const balanceIva = debito - (credito + remanentePesos);
+      const ppm = p.ppmPagar || 0;
+      const ret2 = p.ret2Pagar || 0;
+      const total = p.totalPagar || 0;
+      const today = new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      let resultHtml = '';
+      if (p.isZero) {
+        resultHtml = `
+          <div style="border: 2px solid #94a3b8; background-color: #f8fafc; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <h3 style="margin: 0; font-size: 16px; color: #334155; font-weight: bold;">DECLARACIÓN F29 SIN MOVIMIENTO</h3>
+            <p style="margin: 5px 0 0; font-size: 13px; color: #64748b;">El contribuyente no registra compras, ventas ni retenciones afectas en el período.</p>
+          </div>
+        `;
+      } else if (total > 0) {
+        resultHtml = `
+          <div style="border: 2px solid #e11d48; background-color: #fff1f2; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 12px; font-weight: bold; color: #9f1239; text-transform: uppercase; letter-spacing: 1px;">TOTAL IMPUESTO LÍQUIDO A PAGAR F29</span>
+            <h2 style="margin: 5px 0; font-size: 32px; font-weight: 900; color: #be123c;">${clp(total)}</h2>
+            <p style="margin: 0; font-size: 13px; font-weight: bold; color: #881337;">
+              Fecha límite de pago: Día ${client.deadlineDay} de ${monthNames[Number(month) === 12 ? 1 : Number(month) + 1]} de ${Number(month) === 12 ? Number(year) + 1 : year}
+            </p>
+          </div>
+        `;
+      } else {
+        const absVal = Math.abs(total);
+        const utmEquiv = (absVal / appState.utm).toFixed(2);
+        resultHtml = `
+          <div style="border: 2px solid #059669; background-color: #ecfdf5; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 12px; font-weight: bold; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">CRÉDITO FISCAL REMANENTE A FAVOR</span>
+            <h2 style="margin: 5px 0; font-size: 32px; font-weight: 900; color: #047857;">${clp(absVal)}</h2>
+            <p style="margin: 0; font-size: 13px; font-weight: bold; color: #064e3b;">
+              Equivalente a ${utmEquiv} UTM a favor para descontar de los siguientes períodos tributarios.
+            </p>
+          </div>
+        `;
+      }
+
+      const container = document.getElementById('printable-section');
+      container.innerHTML = `
+        <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #0f172a; max-width: 800px; margin: 0 auto; padding: 20px;">
+          
+          <!-- Encabezado Estudio -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px;">
+            <div>
+              <h1 style="margin: 0; font-size: 20px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a;">ESTUDIO CONTABLE MARLENE</h1>
+              <p style="margin: 2px 0 0; font-size: 12px; color: #475569; font-weight: 600;">Asesoría y Gestión Tributaria Integral</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 12px; font-weight: bold; background: #e0e7ff; color: #3730a3; padding: 3px 8px; border-radius: 6px; display: inline-block;">COMPROBANTE F29</span>
+              <p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">Emisión: ${today}</p>
+            </div>
+          </div>
+
+          <!-- Ficha Contribuyente -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <tr>
+              <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0; width: 50%;">
+                <strong style="color: #64748b; font-size: 11px; display: block;">CONTRIBUYENTE / RAZÓN SOCIAL:</strong>
+                <span style="font-size: 13px; font-weight: 800; color: #0f172a;">${client.name}</span>
+              </td>
+              <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0; width: 50%;">
+                <strong style="color: #64748b; font-size: 11px; display: block;">RUT:</strong>
+                <span style="font-size: 13px; font-weight: 800; font-family: monospace;">${client.rut}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 14px;">
+                <strong style="color: #64748b; font-size: 11px; display: block;">PERÍODO TRIBUTARIO:</strong>
+                <span style="font-size: 12px; font-weight: bold; color: #4338ca;">${monthStr.toUpperCase()} ${year} (UTM: ${clp(appState.utm)})</span>
+              </td>
+              <td style="padding: 10px 14px;">
+                <strong style="color: #64748b; font-size: 11px; display: block;">RÉGIMEN Y VENCIMIENTO:</strong>
+                <span style="font-size: 12px; font-weight: bold;">${client.regime || 'ProPyme'} | Vence Día ${client.deadlineDay}</span>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Tabla de Desglose Matemático F29 -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #cbd5e1;">
+            <thead>
+              <tr style="background: #f1f5f9; color: #334155; font-weight: bold; text-transform: uppercase; font-size: 11px;">
+                <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid #cbd5e1;">Concepto F29</th>
+                <th style="padding: 8px 12px; text-align: right; border-bottom: 2px solid #cbd5e1;">Neto ($)</th>
+                <th style="padding: 8px 12px; text-align: right; border-bottom: 2px solid #cbd5e1;">Crédito ($)</th>
+                <th style="padding: 8px 12px; text-align: right; border-bottom: 2px solid #cbd5e1;">Débito ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(v.boletasIva || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">Boletas de Ventas Electrónicas (39)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${clp(v.boletasNeto || 0)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${clp(v.boletasIva)}</td>
+              </tr>` : ''}
+
+              ${(v.vouchersIva || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">Comprobantes Electrónicos Transbank (48)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${clp(v.vouchersNeto || 0)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${clp(v.vouchersIva)}</td>
+              </tr>` : ''}
+
+              ${(v.facturasIva || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">Facturas Venta Débito Fiscal (33)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${clp(v.facturasNeto || 0)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${clp(v.facturasIva)}</td>
+              </tr>` : ''}
+
+              ${(co.facturasIva || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">Facturas Compra Crédito Fiscal (33)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${clp(co.facturasNeto || 0)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #047857;">${clp(co.facturasIva)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+              </tr>` : ''}
+
+              ${remanentePesos > 0 ? `
+              <tr style="background: #f0fdf4;">
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #047857;">Crédito Mes Anterior Actualizado (${remanenteUtm} UTM)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #047857;">${clp(remanentePesos)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+              </tr>` : ''}
+
+              ${(v.exenta || 0) > 0 ? `
+              <tr style="background: #fffbeb;">
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; color: #92400e; font-weight: 600;">Ventas Exentas / No Gravadas</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; color: #92400e;">${clp(v.exenta)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #92400e; font-weight: bold;">(Exento)</td>
+              </tr>` : ''}
+
+              ${(v.otroImpuestoValor || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #3730a3;">Otros Impuestos en Ventas (ILA / Adicionales)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #3730a3;">${clp(v.otroImpuestoValor)}</td>
+              </tr>` : ''}
+
+              ${(co.exenta || 0) > 0 ? `
+              <tr style="background: #fffbeb;">
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; color: #92400e; font-weight: 600;">Compras Exentas del Período</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; color: #92400e;">${clp(co.exenta)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-size: 10px; color: #92400e; font-weight: bold;">(Exento)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+              </tr>` : ''}
+
+              ${(co.otroImpuestoValor || 0) > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #065f46;">Otros Impuestos en Compras (Crédito Adicional)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #065f46;">${clp(co.otroImpuestoValor)}</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+              </tr>` : ''}
+
+              <!-- Subtotal Balance IVA -->
+              <tr style="background: #f8fafc; font-weight: bold; border-top: 2px solid #cbd5e1;">
+                <td style="padding: 8px 12px; border-bottom: 1px solid #cbd5e1;">SUBTOTAL BALANCE IVA DEL PERÍODO</td>
+                <td style="padding: 8px 12px; text-align: right; border-bottom: 1px solid #cbd5e1;">-</td>
+                <td style="padding: 8px 12px; text-align: right; border-bottom: 1px solid #cbd5e1; font-family: monospace; color: #047857;">${clp(credito + remanentePesos)}</td>
+                <td style="padding: 8px 12px; text-align: right; border-bottom: 1px solid #cbd5e1; font-family: monospace; color: #4338ca;">${clp(debito)}</td>
+              </tr>
+
+              ${ppm > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">PPM a Pagar (${client.ppmRate || 1.5}%)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${clp(ppm)}</td>
+              </tr>` : ''}
+
+              ${ret2 > 0 ? `
+              <tr>
+                <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">Retención 2da Categoría (Honorarios ${client.ret2Rate || 15.25}%)</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0;">-</td>
+                <td style="padding: 7px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${clp(ret2)}</td>
+              </tr>` : ''}
+            </tbody>
+          </table>
+
+          <!-- Recuadro Resultado Final -->
+          ${resultHtml}
+
+          <!-- Notas y Pie de Página -->
+          <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; line-height: 1.5;">
+            <p style="margin: 0;">• Este comprobante resume los montos determinados para la declaración mensual de impuestos (Formulario 29) ante el Servicio de Impuestos Internos (SII).</p>
+            <p style="margin: 4px 0 0;">• En caso de tener impuesto a pagar, recuerde realizar el pago antes de la fecha límite para evitar recargos e intereses.</p>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 11px; color: #475569;">
+            <div style="border-top: 1px dashed #94a3b8; width: 220px; text-align: center; padding-top: 6px;">
+              Revisado: Equipo Marlene
+            </div>
+            <div style="border-top: 1px dashed #94a3b8; width: 220px; text-align: center; padding-top: 6px;">
+              Conforme Contribuyente
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      window.print();
+    }
+
+    // --- IMPRESIÓN DE LA NÓMINA GENERAL DEL MES (PARA ARCHIVAR) ---
+    function printMonthlySummaryReport() {
+      const currentPeriod = appState.period;
+      const [year, month] = currentPeriod.split('-');
+      const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const monthStr = monthNames[Number(month)];
+      const today = new Date().toLocaleDateString('es-CL');
+
+      const activeClients = appState.clients.filter(c => !c.archived);
+      let sumDebito = 0, sumCredito = 0, sumRemanente = 0, sumPpm = 0, sumTotalPagar = 0, sumTotalCredito = 0;
+
+      const rowsHtml = activeClients.map((c, i) => {
+        const p = getClientPeriodData(c, currentPeriod);
+        const v = p.ventas || {};
+        const co = p.compras || {};
+        const debito = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+        const credito = (co.facturasIva || 0) - (co.ncIva || 0);
+        const remanente = co.remanentePesos || 0;
+        const ppm = (p.ppmPagar || 0) + (p.ret2Pagar || 0);
+        const total = p.totalPagar || 0;
+
+        sumDebito += debito;
+        sumCredito += credito;
+        sumRemanente += remanente;
+        sumPpm += ppm;
+        if (total > 0) sumTotalPagar += total;
+        else if (total < 0) sumTotalCredito += Math.abs(total);
+
+        return `
+          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+            <td style="padding: 5px 8px;">${i + 1}</td>
+            <td style="padding: 5px 8px; font-weight: bold;">${c.name}</td>
+            <td style="padding: 5px 8px; font-family: monospace;">${c.rut}</td>
+            <td style="padding: 5px 8px; text-align: center;">Día ${c.deadlineDay}</td>
+            <td style="padding: 5px 8px; text-align: right; font-family: monospace;">${clp(debito)}</td>
+            <td style="padding: 5px 8px; text-align: right; font-family: monospace;">${clp(credito)}</td>
+            <td style="padding: 5px 8px; text-align: right; font-family: monospace;">${remanente > 0 ? clp(remanente) : '-'}</td>
+            <td style="padding: 5px 8px; text-align: right; font-family: monospace;">${ppm > 0 ? clp(ppm) : '-'}</td>
+            <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: bold; color: ${total > 0 ? '#be123c' : (total < 0 ? '#047857' : '#64748b')};">
+              ${p.isZero ? 'Sin Mov.' : (total > 0 ? 'Paga ' + clp(total) : 'Créd. ' + clp(Math.abs(total)))}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const container = document.getElementById('printable-section');
+      container.innerHTML = `
+        <div style="font-family: Arial, sans-serif; color: #0f172a; padding: 15px;">
+          <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 15px;">
+            <div>
+              <h2 style="margin: 0; font-size: 18px; font-weight: bold;">ESTUDIO CONTABLE MARLENE</h2>
+              <p style="margin: 2px 0 0; font-size: 12px; color: #475569;">Nómina General de Declaraciones F29 - Período: <strong>${monthStr.toUpperCase()} ${year}</strong> (UTM: ${clp(appState.utm)})</p>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #64748b;">
+              Fecha de impresión: ${today}<br>Total Clientes: ${activeClients.length}
+            </div>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+              <tr style="background: #e2e8f0; text-transform: uppercase; font-size: 10px;">
+                <th style="padding: 6px 8px; text-align: left;">#</th>
+                <th style="padding: 6px 8px; text-align: left;">Razón Social</th>
+                <th style="padding: 6px 8px; text-align: left;">RUT</th>
+                <th style="padding: 6px 8px; text-align: center;">Vence</th>
+                <th style="padding: 6px 8px; text-align: right;">Débito</th>
+                <th style="padding: 6px 8px; text-align: right;">Crédito</th>
+                <th style="padding: 6px 8px; text-align: right;">Remanente</th>
+                <th style="padding: 6px 8px; text-align: right;">PPM+Ret</th>
+                <th style="padding: 6px 8px; text-align: right;">Resultado F29</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+            <tfoot>
+              <tr style="background: #f1f5f9; font-weight: bold; border-top: 2px solid #0f172a; font-size: 11px;">
+                <td colspan="4" style="padding: 8px;">TOTALES GENERALES CARTERA</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumDebito)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumCredito)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumRemanente)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${clp(sumPpm)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace; color: #be123c;">Paga: ${clp(sumTotalPagar)}<br><span style="color: #047857;">Créd: ${clp(sumTotalCredito)}</span></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+
+      window.print();
+    }
+
+    // --- CARGA DE EXCEL CON PESTAÑAS (MULTIMES) ---
+    let pendingMultiExcelWorkbook = null;
+
+    function handleMultiSheetExcelUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = e.target.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          pendingMultiExcelWorkbook = workbook;
+          showMultiSheetModal(workbook.SheetNames);
+        } catch(err) {
+          alert('Error al leer el archivo Excel: ' + err.message);
+        }
+      };
+      reader.readAsBinaryString(file);
+    }
+
+    function showMultiSheetModal(sheetNames) {
+      const listEl = document.getElementById('multi-excel-sheets-list');
+      listEl.innerHTML = '';
+
+      sheetNames.forEach(sheetName => {
+        const div = document.createElement('label');
+        div.className = 'flex items-center space-x-2 p-2 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer text-xs font-semibold text-slate-800';
+        div.innerHTML = `
+          <input type="checkbox" value="${sheetName}" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 sheet-checkbox">
+          <span>Pestaña: <b>${sheetName}</b></span>
+        `;
+        listEl.appendChild(div);
+      });
+
+      document.getElementById('modal-multi-excel').classList.remove('hidden');
+    }
+
+    function closeModalMultiExcel() {
+      document.getElementById('modal-multi-excel').classList.add('hidden');
+      pendingMultiExcelWorkbook = null;
+      document.getElementById('input-multi-excel').value = '';
+    }
+
+    function confirmMultiSheetImport() {
+      if (!pendingMultiExcelWorkbook) return;
+
+      const checkedBoxes = Array.from(document.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
+      if (checkedBoxes.length === 0) {
+        alert('Por favor selecciona al menos una pestaña para importar.');
+        return;
+      }
+
+      let totalClientsLoaded = 0;
+      let totalPeriodsUpdated = 0;
+
+      checkedBoxes.forEach(sheetName => {
+        const worksheet = pendingMultiExcelWorkbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+        
+        // Detectar si el nombre de la pestaña es un período (ej. "Julio", "07-2026", "Julio 2026", etc.)
+        let sheetPeriod = appState.period;
+        const lowerSheet = sheetName.toLowerCase();
+        const monthNames = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        monthNames.forEach((m, idx) => {
+          if (m && lowerSheet.includes(m)) {
+            const yearMatch = sheetName.match(/\d{4}/);
+            const yearStr = yearMatch ? yearMatch[0] : appState.period.split('-')[0];
+            const mStr = idx < 10 ? '0' + idx : '' + idx;
+            sheetPeriod = `${yearStr}-${mStr}`;
+          }
+        });
+
+        // Parsear filas de la pestaña
+        rows.forEach(row => {
+          if (!row || row.length === 0) return;
+          const text = row.join(' ');
+          const rutMatch = text.match(/(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/);
+          if (rutMatch) {
+            const rut = rutMatch[0].trim();
+            let name = row.find(cell => typeof cell === 'string' && cell.length > 4 && !cell.includes(rut) && !cell.includes('$')) || 'Contribuyente ' + rut;
+            name = String(name).replace(/[;,\t]/g, ' ').trim().toUpperCase();
+
+            // Buscar si ya existe el cliente
+            let client = appState.clients.find(c => c.rut.replace(/[^0-9kK]/g, '') === rut.replace(/[^0-9kK]/g, ''));
+            if (!client) {
+              client = {
+                id: 'cli-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+                rut: rut,
+                name: name,
+                regime: 'ProPyme 14 D3',
+                deadlineDay: 20,
+                phone: '',
+                email: '',
+                ppmRate: 1.5,
+                ret2Rate: 15.25,
+                archived: false,
+                periods: {}
+              };
+              appState.clients.push(client);
+              totalClientsLoaded++;
+            }
+
+            // Datos del periodo
+            const periodData = getClientPeriodData(client, sheetPeriod);
+            totalPeriodsUpdated++;
+          }
+        });
+      });
+
+      saveState();
+      closeModalMultiExcel();
+      alert(`¡Carga exitosa! Se procesaron ${checkedBoxes.length} pestañas del Excel. Clientes registrados: ${appState.clients.length}.`);
+    }
+
+    // --- RESPALDO Y COMPARTIR CON EL EQUIPO (3 USUARIOS) ---
+    function exportDataBackup() {
+      const json = JSON.stringify(appState, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `Respaldo_Conta_Marlene_${appState.period}_${dateStr}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importDataBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.clients && Array.isArray(imported.clients)) {
+            appState = imported;
+            saveState();
+            alert('¡Base de datos sincronizada con éxito! Todos los clientes y cálculos están actualizados.');
+          } else {
+            alert('El archivo no parece ser un respaldo válido de Conta Marlene.');
+          }
+        } catch(err) {
+          alert('Error al leer el archivo de respaldo: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+    // --- CARPETA TRIBUTARIA HISTÓRICA & GRÁFICOS (CHART.JS) ---
+    let activeDossierClient = null;
+    let dossierSalesChart = null;
+    let dossierTaxChart = null;
+
+    function openClientDossier(clientId) {
+      const client = appState.clients.find(c => c.id === clientId);
+      if (!client) return;
+      activeDossierClient = client;
+
+      // Datos cabecera
+      document.getElementById('dossier-client-name').innerText = client.name;
+      document.getElementById('dossier-client-rut').innerText = client.rut;
+      document.getElementById('dossier-regime-badge').innerText = client.regime || 'ProPyme 14 D3';
+      document.getElementById('dossier-deadline-text').innerText = 'Día ' + client.deadlineDay;
+      document.getElementById('dossier-client-phone').innerText = client.phone || 'Sin WhatsApp registrado';
+
+      // Poblador de selector de Años
+      const yearSelect = document.getElementById('select-dossier-year');
+      yearSelect.innerHTML = '';
+      const periods = Object.keys(client.periods || {});
+      const years = Array.from(new Set(periods.map(p => p.split('-')[0]))).sort().reverse();
+      
+      const currentYear = appState.period.split('-')[0];
+      if (!years.includes(currentYear)) years.unshift(currentYear);
+
+      years.forEach(yr => {
+        const opt = document.createElement('option');
+        opt.value = yr;
+        opt.innerText = `Año ${yr}`;
+        yearSelect.appendChild(opt);
+      });
+
+      const optAll = document.createElement('option');
+      optAll.value = 'all';
+      optAll.innerText = '📊 Todos los Años (Histórico Total)';
+      yearSelect.appendChild(optAll);
+
+      yearSelect.value = currentYear;
+
+      document.getElementById('modal-client-dossier').classList.remove('hidden');
+      renderDossierData();
+      lucide.createIcons();
+    }
+
+    function closeClientDossier() {
+      document.getElementById('modal-client-dossier').classList.add('hidden');
+      if (dossierSalesChart) { dossierSalesChart.destroy(); dossierSalesChart = null; }
+      if (dossierTaxChart) { dossierTaxChart.destroy(); dossierTaxChart = null; }
+      activeDossierClient = null;
+    }
+
+    function editDossierClient() {
+      if (!activeDossierClient) return;
+      const cid = activeDossierClient.id;
+      closeClientDossier();
+      openModalEditClient(cid);
+    }
+
+    function renderDossierData() {
+      if (!activeDossierClient) return;
+      const selectedYear = document.getElementById('select-dossier-year').value;
+      const periodsObj = activeDossierClient.periods || {};
+      
+      // Filtrar períodos
+      let periodKeys = Object.keys(periodsObj).sort();
+      if (selectedYear !== 'all') {
+        periodKeys = periodKeys.filter(p => p.startsWith(selectedYear));
+      }
+
+      document.getElementById('dossier-count-label').innerText = `${periodKeys.length} períodos registrados`;
+
+      // Calcular KPIs acumulados
+      let totalSalesNet = 0;
+      let totalPurchasesNet = 0;
+      let totalTaxPaid = 0;
+      let latestRemanenteUtm = 0;
+      let latestRemanenteClp = 0;
+
+      const monthNames = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+      const chartLabels = [];
+      const netSalesData = [];
+      const netPurchasesData = [];
+      const taxPaidData = [];
+      const creditData = [];
+
+      const tbody = document.getElementById('dossier-history-table-body');
+      tbody.innerHTML = '';
+
+      if (periodKeys.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="py-8 text-center text-slate-400 font-semibold">No hay declaraciones registradas para el año ${selectedYear}.</td></tr>`;
+      }
+
+      // Orden cronológico inverso para la tabla (más reciente primero)
+      const reversedPeriods = [...periodKeys].reverse();
+
+      reversedPeriods.forEach(period => {
+        const p = periodsObj[period];
+        const v = p.ventas || {};
+        const co = p.compras || {};
+
+        const vNet = (v.boletasNeto || 0) + (v.vouchersNeto || 0) + (v.facturasNeto || 0) - (v.ncNeto || 0);
+        const vIva = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+        const cNet = (co.facturasNeto || 0) - (co.ncNeto || 0);
+        const cIva = (co.facturasIva || 0) - (co.ncIva || 0);
+        const remPesos = co.remanentePesos || 0;
+        const remUtm = co.remanenteUtm || 0;
+        const ppmYRet = (p.ppmPagar || 0) + (p.ret2Pagar || 0);
+        const total = p.totalPagar || 0;
+
+        totalSalesNet += vNet;
+        totalPurchasesNet += cNet;
+        if (total > 0) totalTaxPaid += total;
+
+        // Fila de la tabla histórica
+        const [y, m] = period.split('-');
+        const periodLabel = `${monthNames[Number(m)]} ${y}`;
+
+        const row = document.createElement('tr');
+        row.className = 'hover:bg-slate-50 border-b border-slate-100 transition';
+        row.innerHTML = `
+          <td class="py-2.5 px-3 font-bold text-slate-800">${periodLabel}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-600">${clp(vNet)}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-indigo-700 font-semibold">${clp(vIva)}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-600">${clp(cNet)}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-emerald-700 font-semibold">${clp(cIva)}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-500">${remPesos > 0 ? clp(remPesos) : '-'}</td>
+          <td class="py-2.5 px-2 text-right font-mono text-slate-600">${ppmYRet > 0 ? clp(ppmYRet) : '-'}</td>
+          <td class="py-2.5 px-3 text-right">
+            ${p.isZero ? 
+              '<span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Sin Movimiento</span>' : 
+              (total > 0 ? 
+                `<span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">Paga ${clp(total)}</span>` : 
+                `<span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Créd. ${clp(Math.abs(total))}</span>`
+              )
+            }
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <div class="flex items-center justify-center space-x-1">
+              <button onclick="openModalF29ForPeriod('${activeDossierClient.id}', '${period}')" title="Ver / Editar cálculo F29 de ${periodLabel}" class="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700">
+                <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
+              </button>
+              <button onclick="printClientVoucherForPeriod('${activeDossierClient.id}', '${period}')" title="Reimprimir Comprobante PDF de ${periodLabel}" class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">
+                <i data-lucide="printer" class="w-3.5 h-3.5 text-indigo-600"></i>
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // Orden cronológico normal para los gráficos (de enero a diciembre)
+      periodKeys.forEach(period => {
+        const p = periodsObj[period];
+        const v = p.ventas || {};
+        const co = p.compras || {};
+        const [y, m] = period.split('-');
+        
+        chartLabels.push(`${monthNames[Number(m)]} ${selectedYear === 'all' ? y.slice(2) : ''}`);
+        
+        const vNet = (v.boletasNeto || 0) + (v.vouchersNeto || 0) + (v.facturasNeto || 0) - (v.ncNeto || 0);
+        const cNet = (co.facturasNeto || 0) - (co.ncNeto || 0);
+        netSalesData.push(vNet);
+        netPurchasesData.push(cNet);
+
+        const total = p.totalPagar || 0;
+        if (total > 0) {
+          taxPaidData.push(total);
+          creditData.push(0);
+        } else if (total < 0) {
+          taxPaidData.push(0);
+          creditData.push(Math.abs(total));
+        } else {
+          taxPaidData.push(0);
+          creditData.push(0);
+        }
+
+        // Último remanente
+        if (co.remanenteUtm > 0) {
+          latestRemanenteUtm = co.remanenteUtm;
+          latestRemanenteClp = co.remanentePesos;
+        } else if (total < 0) {
+          latestRemanenteClp = Math.abs(total);
+          latestRemanenteUtm = Number((latestRemanenteClp / appState.utm).toFixed(2));
+        }
+      });
+
+      // Actualizar tarjetas de KPI
+      document.getElementById('dossier-kpi-sales').innerText = clp(totalSalesNet);
+      document.getElementById('dossier-kpi-purchases').innerText = clp(totalPurchasesNet);
+      document.getElementById('dossier-kpi-tax-paid').innerText = clp(totalTaxPaid);
+      document.getElementById('dossier-kpi-remanente').innerText = `${latestRemanenteUtm} UTM`;
+      document.getElementById('dossier-kpi-remanente-clp').innerText = clp(latestRemanenteClp);
+
+      // RENDERIZAR GRÁFICOS CON CHART.JS
+      renderDossierCharts(chartLabels, netSalesData, netPurchasesData, taxPaidData, creditData);
+      lucide.createIcons();
+    }
+
+    function renderDossierCharts(labels, salesData, purchasesData, taxPaidData, creditData) {
+      if (dossierSalesChart) dossierSalesChart.destroy();
+      if (dossierTaxChart) dossierTaxChart.destroy();
+
+      const canvasSales = document.getElementById('chart-dossier-sales');
+      const canvasTax = document.getElementById('chart-dossier-tax');
+
+      if (!canvasSales || !canvasTax) return;
+
+      // Gráfico 1: Ventas vs Compras
+      dossierSalesChart = new Chart(canvasSales.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Ventas Netas ($)',
+              data: salesData,
+              backgroundColor: '#6366f1',
+              borderRadius: 6
+            },
+            {
+              label: 'Compras Netas ($)',
+              data: purchasesData,
+              backgroundColor: '#14b8a6',
+              borderRadius: 6
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12, font: { family: 'Plus Jakarta Sans', size: 10, weight: 'bold' } } },
+            tooltip: {
+              callbacks: {
+                label: function(context) { return context.dataset.label + ': ' + clp(context.parsed.y); }
+              }
+            }
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback: function(v) { return '$' + (v / 1000).toLocaleString('es-CL') + 'k'; },
+                font: { size: 9 }
+              },
+              grid: { color: '#f1f5f9' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 9, weight: 'bold' } }
+            }
+          }
+        }
+      });
+
+      // Gráfico 2: Impuesto Pagado vs Saldo a Favor
+      dossierTaxChart = new Chart(canvasTax.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Impuesto Pagado ($)',
+              data: taxPaidData,
+              backgroundColor: '#f43f5e',
+              borderRadius: 6
+            },
+            {
+              label: 'Crédito a Favor ($)',
+              data: creditData,
+              backgroundColor: '#10b981',
+              borderRadius: 6
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12, font: { family: 'Plus Jakarta Sans', size: 10, weight: 'bold' } } },
+            tooltip: {
+              callbacks: {
+                label: function(context) { return context.dataset.label + ': ' + clp(context.parsed.y); }
+              }
+            }
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback: function(v) { return '$' + (v / 1000).toLocaleString('es-CL') + 'k'; },
+                font: { size: 9 }
+              },
+              grid: { color: '#f1f5f9' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 9, weight: 'bold' } }
+            }
+          }
+        }
+      });
+    }
+
+    // Funciones puente para abrir F29 o comprobante de períodos anteriores
+    function openModalF29ForPeriod(clientId, period) {
+      appState.period = period;
+      document.getElementById('select-global-period').value = period;
+      closeClientDossier();
+      openModalF29(clientId);
+    }
+
+    function printClientVoucherForPeriod(clientId, period) {
+      const prevPeriod = appState.period;
+      appState.period = period;
+      printClientVoucher(clientId);
+      appState.period = prevPeriod;
+    }
+
+    // Exportar todo el historial del cliente a Excel
+    function exportCurrentDossierToExcel() {
+      if (!activeDossierClient) return;
+      const periodsObj = activeDossierClient.periods || {};
+      const sortedPeriods = Object.keys(periodsObj).sort();
+
+      const rows = sortedPeriods.map(period => {
+        const p = periodsObj[period];
+        const v = p.ventas || {};
+        const co = p.compras || {};
+        const vNet = (v.boletasNeto || 0) + (v.vouchersNeto || 0) + (v.facturasNeto || 0) - (v.ncNeto || 0);
+        const vIva = (v.boletasIva || 0) + (v.vouchersIva || 0) + (v.facturasIva || 0) - (v.ncIva || 0);
+        const cNet = (co.facturasNeto || 0) - (co.ncNeto || 0);
+        const cIva = (co.facturasIva || 0) - (co.ncIva || 0);
+        const total = p.totalPagar || 0;
+
+        return {
+          'Período': period,
+          'Ventas Netas ($)': vNet,
+          'Débito Fiscal ($)': vIva,
+          'Compras Netas ($)': cNet,
+          'Crédito Fiscal ($)': cIva,
+          'Remanente Mes Ant. ($)': co.remanentePesos || 0,
+          'Remanente Mes Ant. (UTM)': co.remanenteUtm || 0,
+          'PPM ($)': p.ppmPagar || 0,
+          'Retención 2da Cat. ($)': p.ret2Pagar || 0,
+          'Resultado F29 ($)': total,
+          'Estado': p.isZero ? 'Sin Movimiento' : (total > 0 ? 'Paga Impuesto' : 'Crédito Remanente')
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Historial F29');
+      const safeName = activeDossierClient.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 25);
+      XLSX.writeFile(wb, `Historial_F29_${safeName}_${activeDossierClient.rut}.xlsx`);
+    }
+  </script>
+
+  <!-- MODAL: CARPETA TRIBUTARIA HISTÓRICA & GRÁFICOS DEL CLIENTE -->
+  <div id="modal-client-dossier" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-150">
+      
+      <!-- Dossier Header -->
+      <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-indigo-900/50">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shadow-inner">
+            <i data-lucide="folder-clock" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-base font-extrabold tracking-tight" id="dossier-client-name">-</h2>
+              <span id="dossier-regime-badge" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">ProPyme</span>
+            </div>
+            <p class="text-xs text-slate-300 font-mono">
+              RUT: <span id="dossier-client-rut" class="font-bold text-white">-</span>
+              | Vence: <span id="dossier-deadline-text" class="text-amber-300 font-bold">Día 20</span>
+              | WhatsApp: <span id="dossier-client-phone" class="text-emerald-300 font-bold">-</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="flex items-center space-x-2">
+          <!-- Botón Exportar Historial a Excel -->
+          <button onclick="exportCurrentDossierToExcel()" title="Descargar historial de todos los años en Excel" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow transition">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Exportar Historial Excel</span>
+          </button>
+          
+          <!-- Botón Editar Ficha -->
+          <button onclick="editDossierClient()" title="Editar datos del contribuyente" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 border border-slate-700 transition">
+            <i data-lucide="edit-3" class="w-4 h-4 text-indigo-400"></i>
+            <span class="hidden sm:inline">Editar Ficha</span>
+          </button>
+
+          <button onclick="closeClientDossier()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Dossier Body -->
+      <div class="p-6 overflow-y-auto space-y-6">
+
+        <!-- Filter & KPI Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div class="flex items-center space-x-3">
+            <span class="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+              <i data-lucide="filter" class="w-4 h-4 text-indigo-600"></i>
+              <span>Filtrar Historial por Año:</span>
+            </span>
+            <select id="select-dossier-year" onchange="renderDossierData()" class="bg-white border border-slate-300 text-slate-800 text-xs font-bold rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-400 focus:outline-none shadow-sm">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+
+          <div class="text-xs text-slate-500 font-medium">
+            Mostrando evolución y declaraciones del período seleccionado.
+          </div>
+        </div>
+
+        <!-- 4 KPI Cards for the Client's History -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Ventas Netas Acumuladas</span>
+            <div class="text-lg font-black text-slate-900 mt-0.5" id="dossier-kpi-sales">$0</div>
+            <span class="text-[10px] text-slate-400">Facturación anual del cliente</span>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <span class="text-[11px] font-bold uppercase text-slate-500 tracking-wider">Compras Netas Acumuladas</span>
+            <div class="text-lg font-black text-slate-900 mt-0.5" id="dossier-kpi-purchases">$0</div>
+            <span class="text-[10px] text-slate-400">Gastos y compras con crédito</span>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-rose-200 bg-rose-50/20 shadow-sm">
+            <span class="text-[11px] font-bold uppercase text-rose-700 tracking-wider">Total IVA Pagado</span>
+            <div class="text-lg font-black text-rose-700 mt-0.5" id="dossier-kpi-tax-paid">$0</div>
+            <span class="text-[10px] text-rose-500">Impuestos F29 aportados al SII</span>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-sm">
+            <span class="text-[11px] font-bold uppercase text-emerald-700 tracking-wider">Remanente Actual en UTM</span>
+            <div class="text-lg font-black text-emerald-700 mt-0.5" id="dossier-kpi-remanente">0 UTM</div>
+            <span class="text-[10px] text-emerald-600 font-mono font-bold" id="dossier-kpi-remanente-clp">$0</span>
+          </div>
+        </div>
+
+        <!-- SECCIÓN DE GRÁFICOS (CHART.JS) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Gráfico 1: Ventas vs Compras -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <span class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <i data-lucide="bar-chart-2" class="w-4 h-4 text-indigo-600"></i>
+                <span>Ventas vs Compras (Mes a Mes)</span>
+              </span>
+              <span class="text-[10px] font-semibold text-slate-400">Evolución en Pesos</span>
+            </div>
+            <div class="relative h-60 w-full">
+              <canvas id="chart-dossier-sales"></canvas>
+            </div>
+          </div>
+
+          <!-- Gráfico 2: Impuesto Pagado vs Saldo a Favor -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <span class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <i data-lucide="trending-up" class="w-4 h-4 text-emerald-600"></i>
+                <span>Resultado F29: Impuesto Pagado vs Crédito</span>
+              </span>
+              <span class="text-[10px] font-semibold text-slate-400">Verde = A Favor | Rojo = Pagado</span>
+            </div>
+            <div class="relative h-60 w-full">
+              <canvas id="chart-dossier-tax"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- TABLA CRONOLÓGICA DE DECLARACIONES ANTERIORES -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-4 py-3 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+              <i data-lucide="history" class="w-4 h-4 text-slate-600"></i>
+              <span>Historial Cronológico de Declaraciones F29</span>
+            </span>
+            <span class="text-xs text-slate-500 font-semibold" id="dossier-count-label">0 períodos</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                  <th class="py-2.5 px-3">Período</th>
+                  <th class="py-2.5 px-2 text-right">Ventas Netas</th>
+                  <th class="py-2.5 px-2 text-right">Débito Fiscal</th>
+                  <th class="py-2.5 px-2 text-right">Compras Netas</th>
+                  <th class="py-2.5 px-2 text-right">Crédito Fiscal</th>
+                  <th class="py-2.5 px-2 text-right">Remanente Ant.</th>
+                  <th class="py-2.5 px-2 text-right">PPM + Ret.</th>
+                  <th class="py-2.5 px-3 text-right">Resultado F29</th>
+                  <th class="py-2.5 px-3 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="dossier-history-table-body" class="divide-y divide-slate-100 font-medium">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Dossier Footer -->
+      <div class="bg-slate-50 px-6 py-3 border-t border-slate-200 flex items-center justify-between">
+        <span class="text-xs text-slate-500 font-medium">
+          Carpeta Contable Digital • Estudio Contable Marlene
+        </span>
+        <button onclick="closeClientDossier()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-5 py-2 rounded-xl transition">
+          Cerrar Carpeta
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: CARGA DE EXCEL CON PESTAÑAS POR MES -->
+  <div id="modal-multi-excel" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-gradient-to-r from-teal-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="layers" class="w-5 h-5 text-emerald-400"></i>
+          <h3 class="text-sm font-extrabold">Importar Excel con Pestañas de Meses</h3>
+        </div>
+        <button onclick="closeModalMultiExcel()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-600 font-medium">
+          Se detectaron las siguientes pestañas en tu archivo. Marca las que deseas importar a la base de datos de Conta Marlene:
+        </p>
+
+        <div id="multi-excel-sheets-list" class="max-h-60 overflow-y-auto space-y-2 p-1">
+          <!-- Rendered dynamically -->
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+          <button onclick="closeModalMultiExcel()" class="px-4 py-2 rounded-xl text-slate-600 font-semibold">Cancelar</button>
+          <button onclick="confirmMultiSheetImport()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl shadow flex items-center space-x-1.5">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Importar Pestañas Seleccionadas</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENEDOR EXCLUSIVO PARA IMPRESIÓN Y GENERACIÓN DE PDF -->
+  <div id="printable-section" class="hidden"></div>
+
+</body>
+</html>

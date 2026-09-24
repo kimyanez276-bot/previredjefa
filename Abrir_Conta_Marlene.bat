@@ -1,0 +1,3 @@
+@echo off
+echo Abriendo Conta Marlene en tu navegador web...
+start "" "%~dp0index.html"
