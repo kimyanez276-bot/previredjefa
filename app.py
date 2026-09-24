@@ -316,7 +316,8 @@ with tab_tabla:
     else:
         # Configurar columnas para st.data_editor
         column_order = [
-            "rut_formateado", "nombre", "dias_trabajados", "sueldo_bruto",
+            "rut_formateado", "nombre", "dias_trabajados",
+            "sueldo_base_previred", "bono_adicional", "sueldo_bruto",
             "afp", "cotizacion_afp", "salud_entidad", "cotizacion_salud",
             "afc_trabajador", "cotizacion_previsional_total", "seguro_social_01",
             "impuesto_unico", "renta_neta_pagada", "asignacion_familiar",
@@ -328,7 +329,9 @@ with tab_tabla:
             "rut_formateado": st.column_config.TextColumn("RUT Trabajador", disabled=True),
             "nombre": st.column_config.TextColumn("Nombre y Apellidos", width="medium"),
             "dias_trabajados": st.column_config.NumberColumn("Días", min_value=0, max_value=31, step=1),
-            "sueldo_bruto": st.column_config.NumberColumn("Sueldo Bruto ($)", format="$%d"),
+            "sueldo_base_previred": st.column_config.NumberColumn("Base Previred ($)", format="$%d", disabled=True, help="Renta imponible original extraída de los comprobantes Previred"),
+            "bono_adicional": st.column_config.NumberColumn("Bono / Haber Adicional ($)", format="$%d", min_value=0, step=1000, help="Ingreso manual de bonos o haberes imponibles. Se sumará automáticamente al Total Imponible / Bruto"),
+            "sueldo_bruto": st.column_config.NumberColumn("Total Imponible / Bruto ($)", format="$%d", help="Suma de Base Previred + Bono / Haber Adicional"),
             "afp": st.column_config.SelectboxColumn("AFP", options=["AFP UNO", "AFP MODELO", "AFP PLANVITAL", "AFP HABITAT", "AFP CUPRUM", "AFP CAPITAL", "AFP PROVIDA"]),
             "cotizacion_afp": st.column_config.NumberColumn("Cotiz. AFP ($)", format="$%d"),
             "salud_entidad": st.column_config.SelectboxColumn("Salud", options=["FONASA", "ISAPRE", "PARTICULAR"]),
@@ -365,15 +368,22 @@ with tab_tabla:
                 # Recalcular columnas derivadas en base a ediciones
                 df_to_save = edited_df.copy()
                 df_to_save["rut"] = df_to_save["rut_formateado"].apply(clean_rut)
+                
+                # Auto-sumar Bono / Haber Adicional a Base Previred para Total Imponible / Bruto
+                if "bono_adicional" in df_to_save.columns:
+                    base_vals = df_to_save["sueldo_base_previred"] if "sueldo_base_previred" in df_to_save.columns else df_to_save["sueldo_bruto"]
+                    df_to_save["sueldo_bruto"] = base_vals.fillna(0.0) + df_to_save["bono_adicional"].fillna(0.0)
+                
                 df_to_save["cotizacion_previsional_total"] = df_to_save["cotizacion_afp"] + df_to_save["cotizacion_salud"] + df_to_save["afc_trabajador"]
-                df_to_save["renta_neta_pagada"] = df_to_save["sueldo_bruto"] - df_to_save["cotizacion_previsional_total"] - df_to_save["seguro_social_01"] - df_to_save["impuesto_unico"]
-                df_to_save["gastos_patronales_total"] = df_to_save["sis"] + df_to_save["afc_empleador"] + df_to_save["isl_mutual"] + df_to_save["seguro_social_patronal"] + df_to_save["seguro_social_01"]
+                df_to_save["seguro_social_01"] = (df_to_save["sueldo_bruto"] * 0.001).round(3)
+                df_to_save["renta_neta_pagada"] = (df_to_save["sueldo_bruto"] - df_to_save["cotizacion_previsional_total"] - df_to_save["seguro_social_01"] - df_to_save["impuesto_unico"]).round(3)
+                df_to_save["gastos_patronales_total"] = (df_to_save["sis"] + df_to_save["afc_empleador"] + df_to_save["isl_mutual"] + df_to_save["seguro_social_patronal"] + df_to_save["seguro_social_01"]).round(3)
                 
                 n_saved = save_remuneraciones_mes(
                     empresa_actual["rut"], anio_sel, mes_sel, df_to_save,
                     usuario=st.session_state["user_fullname"]
                 )
-                st.success(f"¡Cambios guardados con éxito por {st.session_state['user_fullname']}! ({n_saved} registros)")
+                st.success(f"¡Cambios guardados con éxito por {st.session_state['user_fullname']}! Se recalculó el Total Imponible y la Renta Neta ({n_saved} registros).")
                 st.rerun()
 
         with col_btn2:
@@ -524,6 +534,8 @@ with tab_anual:
             m_df = df_anual[df_anual["mes"] == m]
             factor = get_factor_actualizacion(m, anio_sel)
             
+            base_p = float(m_df["sueldo_base_previred"].sum()) if not m_df.empty and "sueldo_base_previred" in m_df.columns else (float(m_df["sueldo_bruto"].sum()) if not m_df.empty else 0.0)
+            bono = float(m_df["bono_adicional"].sum()) if not m_df.empty and "bono_adicional" in m_df.columns else 0.0
             bruto = float(m_df["sueldo_bruto"].sum()) if not m_df.empty else 0.0
             cotiz = float(m_df["cotizacion_previsional_total"].sum()) if not m_df.empty else 0.0
             ss_01 = float(m_df["seguro_social_01"].sum()) if not m_df.empty else 0.0
@@ -535,7 +547,9 @@ with tab_anual:
             resumen_anual_rows.append({
                 "Mes": MESES_MAP[m],
                 "N° Trab.": len(m_df),
-                "Sueldo Bruto ($)": bruto,
+                "Base Previred ($)": base_p,
+                "Bono Adicional ($)": bono,
+                "Total Imponible / Bruto ($)": bruto,
                 "Cotiz. Previsional ($)": cotiz,
                 "Seguro Social 0.1% ($)": ss_01,
                 "Renta Neta Pagada ($)": neta,
@@ -552,7 +566,9 @@ with tab_anual:
         
         st.dataframe(
             df_resumen_anual.style.format({
-                "Sueldo Bruto ($)": "${:,.0f}",
+                "Base Previred ($)": "${:,.0f}",
+                "Bono Adicional ($)": "${:,.0f}",
+                "Total Imponible / Bruto ($)": "${:,.0f}",
                 "Cotiz. Previsional ($)": "${:,.0f}",
                 "Seguro Social 0.1% ($)": "${:,.1f}",
                 "Renta Neta Pagada ($)": "${:,.0f}",
