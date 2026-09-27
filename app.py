@@ -43,13 +43,14 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar desde el PDF de Previred (sección rebajas/cargas).
+    Extrae la Asignación Familiar desde el PDF de Previred (sección rebajas/cargas) de forma robusta.
     """
-    KEYWORDS = ["ASIGNACION FAMILIAR", "TRAMO", "BONIF"]
+    # Incluimos variantes con y sin tilde para evitar errores de coincidencia
+    KEYWORDS = ["ASIGNACIÓN", "ASIGNACION", "FAMILIAR", "REBAJAS", "IPS", "TRAMO", "BONIF"]
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 50000
 
-    # Inicializar todos en 0 (por si no tienen cargas)
+    # Inicializar todos en 0 por defecto
     for rut in workers_data:
         workers_data[rut]["asig_fam"] = 0
 
@@ -60,7 +61,7 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # 1. Detectar páginas relevantes
+        # 1. Detectar páginas relevantes (con o sin tilde)
         if not any(keyword in text_upper for keyword in KEYWORDS):
             continue
 
@@ -74,19 +75,18 @@ def extract_asignacion_familiar(reader, workers_data):
 
             rut = normalize_rut(rut_match.group())
 
-            # 3. Extraer todos los números de la línea
-            numbers = re.findall(r"\d{1,3}(?:\.\d{3})+|\d+", line)
+            # 3. Extraer números de la línea
+            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
             if not numbers:
                 continue
 
-            # Convertir a enteros CLP
             values = []
             for n in numbers:
                 val = parse_clp(n)
                 if val:
                     values.append(val)
 
-            # 4. Filtrar montos reales de asignación familiar
+            # 4. Filtrar montos reales de asignación familiar en el rango chileno
             posibles = [
                 v for v in values
                 if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -95,10 +95,10 @@ def extract_asignacion_familiar(reader, workers_data):
             if not posibles:
                 continue
 
-            # 5. Tomar el valor más probable (último suele ser correcto en Previred)
+            # 5. Tomar el valor de la columna Monto (último válido de la fila)
             monto = posibles[-1]
 
-            # 6. Asignar al trabajador de forma segura
+            # 6. Asignar al trabajador
             if rut in workers_data:
                 workers_data[rut]["asig_fam"] = monto
             else:
@@ -204,7 +204,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Integración de la función pro de Asignación Familiar
+    # 5. Extracción Dinámica y Pro de Asignación Familiar
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -241,7 +241,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro con tildes corregidas
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -266,17 +266,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Asignación Familiar Pro:")
+        st.subheader("Datos Extraídos con Asignación Familiar Dinámica Corregida:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Oficial Pro", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla generada con éxito absoluto y validación pro!")
+            st.success("¡Planilla generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Final Pro",
+                label="📥 Descargar Libro de Remuneraciones Final Definitivo",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final_Pro.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Definitivas.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
