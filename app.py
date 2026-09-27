@@ -43,12 +43,11 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar desde el PDF de Previred (sección rebajas/cargas) de forma robusta.
+    Extrae la Asignación Familiar estrictamente desde la sección de rebajas/cargas de Previred,
+    evitando confundirla con cotizaciones de salud u otros montos.
     """
-    # Incluimos variantes con y sin tilde para evitar errores de coincidencia
-    KEYWORDS = ["ASIGNACIÓN", "ASIGNACION", "FAMILIAR", "REBAJAS", "IPS", "TRAMO", "BONIF"]
     MIN_AMOUNT = 3000
-    MAX_AMOUNT = 50000
+    MAX_AMOUNT = 25000  # Rango exacto y acotado para asignación familiar unitaria
 
     # Inicializar todos en 0 por defecto
     for rut in workers_data:
@@ -61,8 +60,8 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # 1. Detectar páginas relevantes (con o sin tilde)
-        if not any(keyword in text_upper for keyword in KEYWORDS):
+        # 1. Detectar páginas que contengan información de rebajas o cargas familiares
+        if not any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "REBAJAS", "TRAMO", "SIMPLE"]):
             continue
 
         lines = text.split("\n")
@@ -86,7 +85,7 @@ def extract_asignacion_familiar(reader, workers_data):
                 if val:
                     values.append(val)
 
-            # 4. Filtrar montos reales de asignación familiar en el rango chileno
+            # 4. Filtrar montos dentro del rango estrictamente de asignación familiar
             posibles = [
                 v for v in values
                 if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -95,7 +94,7 @@ def extract_asignacion_familiar(reader, workers_data):
             if not posibles:
                 continue
 
-            # 5. Tomar el valor de la columna Monto (último válido de la fila)
+            # 5. El monto correcto de asignación familiar
             monto = posibles[-1]
 
             # 6. Asignar al trabajador
@@ -241,7 +240,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro con tildes corregidas
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
