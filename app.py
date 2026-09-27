@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema leerá dinámicamente todos los datos y extraerá con precisión absoluta el **Monto de Asignación Familiar** desde la columna final de la sección de rebajas y cargas.
+Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema leerá dinámicamente sueldos, aportes y el **Monto exacto de la columna Asignación Familiar** desde el PDF sin montos fijos.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -114,23 +114,22 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-        # 5. Búsqueda estricta de Asignación Familiar en la sección de Rebajas / Monto
+        # 5. Búsqueda dinámica y estricta en la sección de Asignación Familiar / Rebajas
         if "ASIGNACION FAMILIAR" in text or "REBAJAS" in text or "Tramo" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "TOTAL" not in line and "GENERALES" not in line:
+                if m and "76.519" not in line and "TOTAL" not in line and "GENERALES" not in line and "PAGINA" not in line:
                     rut = normalize_rut(m.group(1))
-                    # Extraemos todos los números que están después del RUT en esta línea de cargas
-                    after_rut = line[m.end():]
-                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
+                    # Buscamos todos los números en la línea
+                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)]
                     if nums:
-                        # El monto final de asignación familiar en la tabla de Previred es siempre el último número válido de la fila
-                        # (filtrando los códigos de tramo o conteo de cargas que suelen ser 1, 0, etc.)
-                        valid_amounts = [n for n in nums if n > 1000] # Montos de asignación son mayores a $1.000
-                        if valid_amounts:
-                            monto_asig = valid_amounts[-1] # El último número grande de la fila es el Monto ($)
+                        # El monto de asignación familiar en la tabla de Previred es siempre un valor monetario real (ej. 13.870)
+                        # Filtramos números que parezcan montos de asignación (mayores a 3000 y menores a 500000)
+                        montos_candidatos = [n for n in nums if 3000 <= n <= 500000]
+                        if montos_candidatos:
+                            monto_real = montos_candidatos[-1] # El último candidato es la columna "Monto"
                             if rut in workers_data:
-                                workers_data[rut]["asig_fam"] = monto_asig
+                                workers_data[rut]["asig_fam"] = monto_real
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -166,7 +165,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Extraído dinámicamente del final de la fila de rebajas
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica leída de la columna Monto del PDF
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -191,17 +190,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos y Asignación Familiar Capturada:")
+        st.subheader("Datos Extraídos Dinámicamente (Cargas Incluidas):")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla con Asignación Dinámica", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial Dinámica", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla generada con éxito absoluto y asignación familiar lista!")
+            st.success("¡Planilla generada con éxito absoluto y asignación familiar dinámica!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Oficial",
+                label="📥 Descargar Libro de Remuneraciones Definitivo",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Definitivas.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
