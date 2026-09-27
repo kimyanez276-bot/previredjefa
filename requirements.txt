@@ -1,4 +1,4 @@
-streamlit
-pandas
-openpyxl
-pypdf
+streamlit>=1.40
+pandas>=2.0
+openpyxl>=3.1
+pypdf>=5.0
