@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema procesará sueldos, fórmulas previsionales, impuesto único, aportes patronales y asignará la **Asignación Familiar** al RUT correspondiente en la Columna N para **Agosto**.
+Sube tu archivo PDF de Previred del mes y tu planilla corporativa. El sistema leerá **dinámicamente** los sueldos, la fórmula previsional, el impuesto único, los aportes patronales y la **Asignación Familiar real** directamente desde el documento PDF.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -59,7 +59,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             "rent_prot": 0,
                             "s_social": 0,
                             "impto_unico": 0,
-                            "asig_fam": 0
+                            "asig_fam": 0 # Inicializado dinámicamente en 0
                         }
 
     # 2. Páginas de AFP (4, 6, 8): Cotización Obligatoria AFP y AFC Trabajador / Empleador
@@ -113,10 +113,21 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                         workers_data[rut]["rent_prot"] = nums[3]
                         workers_data[rut]["sis"] = nums[4]
 
-    # 5. Página 14: Asignación Familiar (Anexo IPS / Cargas) -> Asignar estrictamente 13870 a Liz Marbella (26.879.752-1)
-    for rut in workers_data:
-        if "26.879.752" in rut:
-            workers_data[rut]["asig_fam"] = 13870
+    # 5. Página 14 (o última página): Lectura dinámica de Asignación Familiar desde el anexo IPS
+    for page in reader.pages:
+        p_text = page.extract_text() or ""
+        if "ASIGNACION FAMILIAR" in p_text or "Tramo" in p_text:
+            for line in p_text.split("\n"):
+                m = RUT_RE.search(line)
+                if m and "76.519" not in line and "TOTAL" not in line:
+                    rut = normalize_rut(m.group(1))
+                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
+                    # El monto de asignación familiar suele ser el número típico de cargas (ej entre 5000 y 50000)
+                    for n in nums:
+                        if 3000 <= n <= 100000:
+                            if rut in workers_data:
+                                workers_data[rut]["asig_fam"] = n
+                                break
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -152,7 +163,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Monto exacto
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica leída del PDF
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -169,7 +180,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 # Interfaz Streamlit
-pdf_file = st.file_uploader("1. Sube tu PDF de Previred (`CtrlPdf.pdf`)", type=["pdf"])
+pdf_file = st.file_uploader("1. Sube tu PDF de Previred del mes", type=["pdf"])
 template_file = st.file_uploader("2. Sube tu plantilla Excel oficial", type=["xlsx"])
 
 if pdf_file and template_file:
@@ -177,17 +188,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Oficiales Extraídos (Asignación Familiar Incorporada):")
+        st.subheader("Datos Extraídos Dinámicamente del PDF:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla con Asignación Familiar", type="primary"):
+        if st.button("🚀 Rellenar Planilla Dinámica Oficial", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla generada con éxito absoluto, asignación familiar lista!")
+            st.success("¡Planilla generada con éxito absoluto y 100% automatizada!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones - Agosto Definitivo Cargas",
+                label="📥 Descargar Libro de Remuneraciones Dinámico",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Agosto_Final_Cargas.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Actualizado.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
