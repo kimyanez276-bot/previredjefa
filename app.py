@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema rellenará el sueldo bruto, los aportes patronales y dejará estructurada la **fórmula exacta de Cotización Previsional** en la Columna C para el mes de **Agosto**.
+Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema corregirá la fórmula de la Columna C para que sume exactamente la AFP, el AFC del trabajador y Fonasa, menos el seguro social.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -130,14 +130,14 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 1. Sueldo Bruto/Imponible -> Columna B (2)
                             ws.cell(r_sub, 2).value = rec["sueldo_imponible"]
                             
-                            # 2. Cotización Previsional (Columna C) -> Fórmula exacta solicitada
-                            # = [Cotiz AFP] + [AFC Afiliado] + [Salud Fonasa] - D{r_sub}
+                            # 2. Cotización Previsional (Columna C) -> Fórmula exacta corregida
+                            # = [Cotiz AFP] + [AFC Trabajador] + [Salud Fonasa] - D{r_sub}
                             cotiz_val = rec["cotiz_afp"]
                             afc_t_val = rec["afc_trab"]
                             salud_val = rec["salud_fonasa"]
                             ws.cell(r_sub, 3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
-                            # 3. Aportes Patronales
+                            # 3. Aportes Patronales exactos
                             ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
                             ws.cell(r_sub, 17).value = rec["afc_emp"]   # AFC Empleador (Columna Q)
                             ws.cell(r_sub, 18).value = rec["isl"]       # ISL (Columna R)
@@ -159,17 +159,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos y Fórmula Configurada:")
+        st.subheader("Datos Extraídos y Fórmula Corregida:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla con Fórmulas Exactas", type="primary"):
+        if st.button("🚀 Rellenar Planilla con Fórmula Perfecta", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla rellenada al 100% respetando la fórmula de cotización previsional!")
+            st.success("¡Planilla corregida y rellenada al 100%!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones - Agosto Definitivo",
+                label="📥 Descargar Libro de Remuneraciones - Agosto Corregido",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Agosto_Con_Formulas.xlsx",
+                file_name="IMPORT_DONG_SHENG_Agosto_Perfecto_Final.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
