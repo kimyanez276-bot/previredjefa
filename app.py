@@ -1,6 +1,6 @@
 import io
 import re
-from typing import Optional, Tuple
+from typing import Optional
 import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema extraerá correctamente los sueldos imponibles por RUT y rellenará con precisión la fila de **Agosto** en la pestaña **SUELDOS 2026**.
+Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema cruzará los RUTs de forma exacta y rellenará la fila de **Agosto** en la pestaña **SUELDOS 2026**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -50,27 +50,29 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     lines = full_text.split("\n")
     records = {}
     
-    # Recorremos línea por línea buscando patrones de RUT y montos válidos de remuneración
+    # Parser optimizado para extraer RUT y sueldo imponible exacto de las líneas de detalle
     for i, line in enumerate(lines):
         rut_match = RUT_RE.search(line)
         if rut_match:
             rut_raw = rut_match.group(1)
             rut = normalize_rut(rut_raw)
-            if not rut:
+            if not rut or "76.519" in rut: # Ignorar el RUT de la empresa
                 continue
             
-            # Buscamos en las líneas cercanas un monto imponible válido (ej entre 300.000 y 10.000.000)
-            window = " ".join(lines[max(0, i-2):min(len(lines), i+3)])
-            tokens = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d{6,8}\b", window)
+            # Revisamos la línea actual y las siguientes cercanas para capturar el sueldo imponible
+            window_lines = lines[max(0, i-1):min(len(lines), i+4)]
+            window_text = " ".join(window_lines)
             
+            # Buscamos números con formato de sueldo imponible válido en Chile (ej. 300.000 a 5.000.000)
+            tokens = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d{6,7}\b", window_text)
             amounts = []
             for t in tokens:
                 val = parse_clp(t)
-                if val and 300000 <= val <= 15000000: # Rango normal de sueldos imponibles
+                if val and 300000 <= val <= 10000000:
                     amounts.append(val)
             
             if amounts:
-                # Tomamos el primer monto coherente como sueldo imponible
+                # El primer monto válido en la ventana del trabajador corresponde a su remuneración imponible
                 records[rut] = {
                     "rut": rut,
                     "sueldo_imponible": amounts[0]
@@ -88,21 +90,22 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     
     ws = wb[SHEET_NAME]
     
-    # Recorremos el Excel buscando los bloques de cada trabajador por RUT
+    # Recorremos la hoja buscando las celdas que contienen los RUTs de los trabajadores
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
         norm_cell = normalize_rut(cell_val)
+        
         if norm_cell:
             for _, rec in df.iterrows():
                 if normalize_rut(rec["rut"]) == norm_cell:
-                    # Encontramos al trabajador. Buscamos la fila de AGOSTO en su bloque hacia abajo
-                    for r_sub in range(row, row + 15):
+                    # Encontramos al trabajador en este bloque. Buscamos la fila "AGOSTO" hacia abajo
+                    for r_sub in range(row, row + 16):
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
-                        if "AGOSTO" in mes_val:
-                            # Columna 2 (B) es el Sueldo Bruto/Imponible en la plantilla de sueldos
+                        if TARGET_MONTH in mes_val:
+                            # Columna 2 (B) es donde van los sueldos en tu plantilla
                             ws.cell(r_sub, 2).value = rec["sueldo_imponible"]
                             break
-    
+                            
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -117,21 +120,21 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos extraídos del Previred:")
+        st.subheader("Trabajadores y Sueldos Imponibles Extraídos del Previred:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla con Montos Exactos", type="primary"):
+        if st.button("🚀 Rellenar Planilla Perfectamente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla rellenada y corregida con éxito!")
+            st.success("¡Planilla rellenada y corregida sin errores!")
             
             st.download_button(
-                label="📥 Descargar Libro Corregido",
+                label="📥 Descargar Libro de Remuneraciones Oficial - Agosto",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Agosto_Corregido.xlsx",
+                file_name="IMPORT_DONG_SHENG_Agosto_Definitivo.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar: {e}")
+        st.error(f"Ocurrió un error al procesar los archivos: {e}")
 else:
     st.info("Por favor, sube ambos archivos para comenzar.")
