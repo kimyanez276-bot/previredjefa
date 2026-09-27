@@ -28,65 +28,16 @@ def normalize_rut(value) -> str:
         return ""
     return f"{raw[:-1]}-{raw[-1].upper()}"
 
-def extract_asignacion_familiar(pdf_reader, workers_data):
-    """
-    Extrae la Asignación Familiar estrictamente desde la sección de rebajas/IPS de Previred.
-    """
-    section_keywords = ["ASIGNACION FAMILIAR", "REBAJAS", "IPS"]
-
-    for page in pdf_reader.pages:
-        text = page.extract_text()
-        if not text:
-            continue
-
-        text_upper = text.upper()
-
-        if not any(keyword in text_upper for keyword in section_keywords):
-            continue
-
-        lines = text.split("\n")
-
-        for line in lines:
-            rut_match = RUT_RE.search(line)
-            if not rut_match:
-                continue
-
-            rut = normalize_rut(rut_match.group())
-
-            nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)]
-            candidatos_asig = [n for n in nums if 3000 <= n <= 35000]
-
-            if candidatos_asig:
-                monto = candidatos_asig[-1]
-                if rut in workers_data:
-                    workers_data[rut]["asig_fam"] = monto
-                else:
-                    workers_data[rut] = {
-                        "rut": rut,
-                        "sueldo_imponible": 0,
-                        "salud_fonasa": 0,
-                        "cotiz_afp": 0,
-                        "afc_trab": 0,
-                        "sis": 0,
-                        "afc_emp": 0,
-                        "isl": 0,
-                        "rent_prot": 0,
-                        "s_social": 0,
-                        "impto_unico": 0,
-                        "asig_fam": monto
-                    }
-
-    return workers_data
-
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     workers_data = {}
     
+    # PASO 1: Recorrer todas las páginas para extraer datos generales, sueldos y aportes
     for page in reader.pages:
         text = page.extract_text() or ""
         lines = text.split("\n")
         
-        # 1. Remuneraciones / AFP
+        # A. Remuneraciones / AFP
         if "AFP" in text and "REMUNERACIÓN" in text:
             for line in lines:
                 if RUT_RE.search(line) and "AFP" in line:
@@ -116,7 +67,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                                     "asig_fam": 0
                                 }
 
-        # 2. Detalle de AFP (Cotización y AFC)
+        # B. Detalle de AFP (Cotización y AFC)
         if "Cotización" in text and ("Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text):
             for line in lines:
                 m = RUT_RE.search(line)
@@ -139,7 +90,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             else:
                                 workers_data[rut]["impto_unico"] = 0
 
-        # 3. ISL (Mutual)
+        # C. ISL (Mutual)
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -150,7 +101,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                         if rut in workers_data:
                             workers_data[rut]["isl"] = nums[1]
 
-        # 4. Seguro Social Previsional
+        # D. Seguro Social Previsional
         if "SEGURO SOCIAL PREVISIONAL" in text or "Seguro Social" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -163,8 +114,47 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica de Asignación Familiar
-    workers_data = extract_asignacion_familiar(reader, workers_data)
+    # PASO 2: Extracción especializada y robusta de la Asignación Familiar desde la sección IPS / Rebajas
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        text_upper = text.upper()
+        
+        # Verificamos si la página corresponde al anexo de IPS / Asignación Familiar
+        if any(keyword in text_upper for keyword in ["IPS (EX INP)", "ASIGNACION FAMILIAR", "REBAJAS"]):
+            lines = text.split("\n")
+            for line in lines:
+                rut_match = RUT_RE.search(line)
+                if not rut_match:
+                    continue
+                
+                rut = normalize_rut(rut_match.group())
+                
+                # Extraemos todos los números enteros de la línea de cargas
+                nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)]
+                
+                # Filtramos para encontrar el monto de asignación (en Chile típicamente entre 3.000 y 50.000 pesos)
+                candidatos = [n for n in nums if 3000 <= n <= 50000]
+                
+                if candidatos:
+                    monto_asig = candidatos[-1] # El último número en ese rango es la columna "Monto"
+                    if rut in workers_data:
+                        workers_data[rut]["asig_fam"] = monto_asig
+                    else:
+                        # Si el trabajador aparece en el anexo de cargas pero no en las AFP previas
+                        workers_data[rut] = {
+                            "rut": rut,
+                            "sueldo_imponible": 0,
+                            "salud_fonasa": 0,
+                            "cotiz_afp": 0,
+                            "afc_trab": 0,
+                            "sis": 0,
+                            "afc_emp": 0,
+                            "isl": 0,
+                            "rent_prot": 0,
+                            "s_social": 0,
+                            "impto_unico": 0,
+                            "asig_fam": monto_asig
+                        }
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -200,7 +190,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica extraída del IPS
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
