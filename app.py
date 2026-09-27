@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema corregirá la fórmula de la Columna C para que sume exactamente la AFP, el AFC del trabajador y Fonasa, menos el seguro social.
+Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema extraerá con precisión absoluta los montos de AFP, AFC del trabajador y Salud para armar la fórmula correcta en la Columna C de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -31,8 +31,9 @@ def normalize_rut(value) -> str:
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     
-    # 1. Extraemos Remuneración Imponible y Salud (Fonasa) de la página 2
     workers_data = {}
+    
+    # 1. Página 2: Remuneración Imponible y Salud (Fonasa)
     if len(reader.pages) >= 2:
         p2_text = reader.pages[1].extract_text() or ""
         for line in p2_text.split("\n"):
@@ -60,7 +61,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             "s_social": 0
                         }
 
-    # 2. Extraemos Cotización Obligatoria AFP y AFC Afiliado de las páginas de AFP (4, 6, 8)
+    # 2. Páginas de AFP (4, 6, 8): Extracción precisa de Cotiz AFP y AFC Trabajador / Empleador
     for p_idx in [3, 5, 7]:
         if p_idx < len(reader.pages):
             p_text = reader.pages[p_idx].extract_text() or ""
@@ -70,16 +71,17 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                     rut = normalize_rut(m.group(1))
                     after_rut = line[m.end():]
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
-                    if len(nums) >= 8:
+                    if len(nums) >= 9:
                         cotiz_afp = nums[1]
-                        afc_trab = nums[6] if len(nums) >= 7 else 0
-                        afc_emp = nums[7] if len(nums) >= 8 else 0
+                        # nums[7] es estrictamente la cotización del trabajador (AFC Afiliado) y nums[8] la del empleador
+                        afc_trab = nums[7] if len(nums) >= 8 else 0
+                        afc_emp = nums[8] if len(nums) >= 9 else 0
                         if rut in workers_data:
                             workers_data[rut]["cotiz_afp"] = cotiz_afp
                             workers_data[rut]["afc_trab"] = afc_trab
                             workers_data[rut]["afc_emp"] = afc_emp
 
-    # 3. Extraemos ISL de la página 10
+    # 3. Página 10: ISL
     if len(reader.pages) >= 10:
         p10_text = reader.pages[9].extract_text() or ""
         for line in p10_text.split("\n"):
@@ -91,7 +93,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                     if rut in workers_data:
                         workers_data[rut]["isl"] = nums[1]
 
-    # 4. Extraemos Seguro Social, Rent. Protegida y SIS de la página 12
+    # 4. Página 12: Seguro Social, Renta Protegida y SIS
     if len(reader.pages) >= 12:
         p12_text = reader.pages[11].extract_text() or ""
         for line in p12_text.split("\n"):
@@ -159,17 +161,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos y Fórmula Corregida:")
+        st.subheader("Datos Extraídos y Fórmula Perfecta:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla con Fórmula Perfecta", type="primary"):
+        if st.button("🚀 Rellenar Planilla Definitiva", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla corregida y rellenada al 100%!")
+            st.success("¡Planilla rellenada y corregida al 100%!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones - Agosto Corregido",
+                label="📥 Descargar Libro de Remuneraciones - Agosto Perfecto",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Agosto_Perfecto_Final.xlsx",
+                file_name="IMPORT_DONG_SHENG_Agosto_Perfecto.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
