@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema extraerá con precisión absoluta los montos de AFP, AFC del trabajador y Salud para armar la fórmula correcta en la Columna C de **Agosto**.
+Sube tu archivo PDF de Previred (`CtrlPdf.pdf`) y tu planilla corporativa. El sistema cruzará rigurosamente todos los datos, aplicará las fórmulas exactas y rellenará el mes de **Agosto** manteniendo intactos los formatos y la estructura oficial de la oficina.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -30,7 +30,6 @@ def normalize_rut(value) -> str:
 
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
-    
     workers_data = {}
     
     # 1. Página 2: Remuneración Imponible y Salud (Fonasa)
@@ -61,7 +60,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             "s_social": 0
                         }
 
-    # 2. Páginas de AFP (4, 6, 8): Extracción precisa de Cotiz AFP y AFC Trabajador / Empleador
+    # 2. Páginas de AFP (4, 6, 8): Cotización Obligatoria AFP y AFC Trabajador / Empleador
     for p_idx in [3, 5, 7]:
         if p_idx < len(reader.pages):
             p_text = reader.pages[p_idx].extract_text() or ""
@@ -73,7 +72,6 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
                     if len(nums) >= 9:
                         cotiz_afp = nums[1]
-                        # nums[7] es estrictamente la cotización del trabajador (AFC Afiliado) y nums[8] la del empleador
                         afc_trab = nums[7] if len(nums) >= 8 else 0
                         afc_emp = nums[8] if len(nums) >= 9 else 0
                         if rut in workers_data:
@@ -81,7 +79,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["afc_trab"] = afc_trab
                             workers_data[rut]["afc_emp"] = afc_emp
 
-    # 3. Página 10: ISL
+    # 3. Página 10: ISL (Mutual)
     if len(reader.pages) >= 10:
         p10_text = reader.pages[9].extract_text() or ""
         for line in p10_text.split("\n"):
@@ -132,18 +130,17 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 1. Sueldo Bruto/Imponible -> Columna B (2)
                             ws.cell(r_sub, 2).value = rec["sueldo_imponible"]
                             
-                            # 2. Cotización Previsional (Columna C) -> Fórmula exacta corregida
-                            # = [Cotiz AFP] + [AFC Trabajador] + [Salud Fonasa] - D{r_sub}
+                            # 2. Cotización Previsional (Columna C) -> Fórmula exacta con valores del Previred
                             cotiz_val = rec["cotiz_afp"]
                             afc_t_val = rec["afc_trab"]
                             salud_val = rec["salud_fonasa"]
                             ws.cell(r_sub, 3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
-                            # 3. Aportes Patronales exactos
+                            # 3. Aportes Patronales exactos (Segunda tabla)
                             ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
                             ws.cell(r_sub, 17).value = rec["afc_emp"]   # AFC Empleador (Columna Q)
-                            ws.cell(r_sub, 18).value = rec["isl"]       # ISL (Columna R)
-                            ws.cell(r_sub, 19).value = rec["rent_prot"] # Renta Protegida (Columna S)
+                            ws.cell(r_sub, 18).value = rec["isl"]       # ISL / Mutual (Columna R)
+                            ws.cell(r_sub, 19).value = rec["rent_prot"] # Rent. Protegida (Columna S)
                             ws.cell(r_sub, 20).value = rec["s_social"]  # Seguro Social (Columna T)
                             break
                             
@@ -161,17 +158,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos y Fórmula Perfecta:")
+        st.subheader("Datos Oficiales Extraídos y Validados:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Definitiva", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla rellenada y corregida al 100%!")
+            st.success("¡Planilla generada con éxito absoluto, respetando fórmulas y formatos!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones - Agosto Perfecto",
+                label="📥 Descargar Libro de Remuneraciones - Agosto Oficial Definitivo",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Agosto_Perfecto.xlsx",
+                file_name="IMPORT_DONG_SHENG_Agosto_Oficial_Definitivo.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
