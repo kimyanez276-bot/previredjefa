@@ -28,6 +28,78 @@ def normalize_rut(value) -> str:
         return ""
     return f"{raw[:-1]}-{raw[-1].upper()}"
 
+def parse_clp(value) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not pd.isna(value):
+        return int(round(value))
+    text = str(value).strip().replace("$", "").replace(" ", "")
+    if not text or "%" in text:
+        return None
+    text = text.replace(".", "")
+    if text.isdigit():
+        return int(text)
+    return None
+
+def extract_asignacion_familiar(pdf_reader, workers_data):
+    """
+    Extrae asignación familiar desde secciones de rebajas en PDF Previred.
+    Se basa en búsqueda dinámica por texto y asociación por RUT.
+    """
+    section_keywords = ["ASIGNACION FAMILIAR", "REBAJAS", "IPS"]
+
+    for page in pdf_reader.pages:
+        text = page.extract_text()
+        if not text:
+            continue
+
+        text_upper = text.upper()
+
+        # 1. Detectar páginas relevantes por membrete
+        if not any(keyword in text_upper for keyword in section_keywords):
+            continue
+
+        lines = text.split("\n")
+
+        for line in lines:
+            # 2. Buscar RUT en la línea
+            rut_match = RUT_RE.search(line)
+            if not rut_match:
+                continue
+
+            rut = normalize_rut(rut_match.group())
+
+            # 3. Buscar montos en la línea
+            amounts = re.findall(r"\$?\s*([\d\.]{4,})", line)
+
+            if not amounts:
+                continue
+
+            # 4. Tomar el último monto (columna MONTO)
+            monto = parse_clp(amounts[-1])
+
+            # Validación básica (evitar ruido)
+            if monto and monto > 3000:
+                if rut in workers_data:
+                    workers_data[rut]["asig_fam"] = monto
+                else:
+                    workers_data[rut] = {
+                        "rut": rut,
+                        "sueldo_imponible": 0,
+                        "salud_fonasa": 0,
+                        "cotiz_afp": 0,
+                        "afc_trab": 0,
+                        "sis": 0,
+                        "afc_emp": 0,
+                        "isl": 0,
+                        "rent_prot": 0,
+                        "s_social": 0,
+                        "impto_unico": 0,
+                        "asig_fam": monto
+                    }
+
+    return workers_data
+
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     workers_data = {}
@@ -113,19 +185,8 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-        # 5. Asignación Familiar Dinámica por Membrete
-        if "ASIGNACION FAMILIAR" in text or "REBAJAS" in text or "Tramo" in text:
-            for line in lines:
-                m = RUT_RE.search(line)
-                if m and "76.519" not in line and "TOTAL" not in line and "GENERALES" not in line and "PAGINA" not in line:
-                    rut = normalize_rut(m.group(1))
-                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)]
-                    if nums:
-                        candidatos = [n for n in nums if 3000 <= n <= 500000]
-                        if candidatos:
-                            monto_real = candidatos[-1]
-                            if rut in workers_data:
-                                workers_data[rut]["asig_fam"] = monto_real
+    # 5. Extracción Dinámica de Asignación Familiar con la función especializada
+    workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -161,7 +222,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica extraída
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -175,7 +236,6 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    output.seek(0)
     return output.getvalue()
 
 # Interfaz Streamlit
@@ -187,7 +247,7 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos del Mes:")
+        st.subheader("Datos Extraídos con Asignación Familiar Dinámica:")
         st.dataframe(df_extracted, use_container_width=True)
         
         if st.button("🚀 Rellenar Planilla Oficial", type="primary"):
@@ -195,7 +255,7 @@ if pdf_file and template_file:
             st.success("¡Planilla generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Oficial",
+                label="📥 Descargar Libro de Remuneraciones Final",
                 data=final_excel,
                 file_name="IMPORT_DONG_SHENG_Remuneraciones_Final.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
