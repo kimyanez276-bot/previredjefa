@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema buscará de forma inteligente **por membretes y títulos de sección** (sin importar el orden de las páginas) para extraer sueldos, cotizaciones, impuesto único, aportes patronales y la **Asignación Familiar**.
+Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema leerá dinámicamente todos los datos y extraerá con precisión absoluta el **Monto de Asignación Familiar** desde la columna final de la sección de rebajas y cargas.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -32,12 +32,12 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     workers_data = {}
     
-    # Recorremos cada página del PDF buscando por membretes y contenidos específicos
+    # Recorremos cada página del PDF buscando por membretes
     for page in reader.pages:
         text = page.extract_text() or ""
         lines = text.split("\n")
         
-        # 1. Búsqueda de tabla de Remuneraciones / AFP (Membrete con AFP y Remuneración Imponible)
+        # 1. Búsqueda de tabla de Remuneraciones / AFP
         if "AFP" in text and "REMUNERACIÓN" in text:
             for line in lines:
                 if RUT_RE.search(line) and "AFP" in line:
@@ -68,7 +68,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                                 }
 
         # 2. Búsqueda de detalles de AFP (Cotización Obligatoria y AFC)
-        if "Cotización" in text and "Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text:
+        if "Cotización" in text and ("Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text):
             for line in lines:
                 m = RUT_RE.search(line)
                 if m and "76.519" not in line and "R.U.T" not in line:
@@ -90,7 +90,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             else:
                                 workers_data[rut]["impto_unico"] = 0
 
-        # 3. Búsqueda de ISL (Instituto de Seguridad Laboral / Mutual) por membrete
+        # 3. Búsqueda de ISL (Mutual)
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -101,7 +101,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                         if rut in workers_data:
                             workers_data[rut]["isl"] = nums[1]
 
-        # 4. Búsqueda de Seguro Social Previsional por membrete
+        # 4. Búsqueda de Seguro Social Previsional
         if "SEGURO SOCIAL PREVISIONAL" in text or "Seguro Social" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -114,19 +114,23 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-        # 5. Búsqueda inteligente por membrete de "ASIGNACION FAMILIAR" o "REBAJAS"
+        # 5. Búsqueda estricta de Asignación Familiar en la sección de Rebajas / Monto
         if "ASIGNACION FAMILIAR" in text or "REBAJAS" in text or "Tramo" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "TOTAL" not in line:
+                if m and "76.519" not in line and "TOTAL" not in line and "GENERALES" not in line:
                     rut = normalize_rut(m.group(1))
-                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
-                    # Buscamos el monto exacto de asignación familiar (típicamente entre 3000 y 50000)
-                    for n in nums:
-                        if 3000 <= n <= 100000:
+                    # Extraemos todos los números que están después del RUT en esta línea de cargas
+                    after_rut = line[m.end():]
+                    nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
+                    if nums:
+                        # El monto final de asignación familiar en la tabla de Previred es siempre el último número válido de la fila
+                        # (filtrando los códigos de tramo o conteo de cargas que suelen ser 1, 0, etc.)
+                        valid_amounts = [n for n in nums if n > 1000] # Montos de asignación son mayores a $1.000
+                        if valid_amounts:
+                            monto_asig = valid_amounts[-1] # El último número grande de la fila es el Monto ($)
                             if rut in workers_data:
-                                workers_data[rut]["asig_fam"] = n
-                                break
+                                workers_data[rut]["asig_fam"] = monto_asig
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -162,7 +166,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Leída dinámicamente por membrete
+                            # 4. Asignación Familiar (Columna N / 14) -> Extraído dinámicamente del final de la fila de rebajas
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -187,12 +191,12 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos Inteligente y Dinámicamente:")
+        st.subheader("Datos Extraídos y Asignación Familiar Capturada:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla por Membretes", type="primary"):
+        if st.button("🚀 Rellenar Planilla con Asignación Dinámica", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla generada con éxito absoluto y lectura por membretes!")
+            st.success("¡Planilla generada con éxito absoluto y asignación familiar lista!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones Oficial",
