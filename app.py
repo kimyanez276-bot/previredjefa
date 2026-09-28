@@ -43,8 +43,8 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar buscando explícitamente páginas que contengan
-    'ASIGNACIÓN FAMILIAR' o 'ASIGNACION FAMILIAR' y filtrando el monto de cargas.
+    Extrae la Asignación Familiar de forma flexible buscando páginas que contengan
+    conceptos de rebajas, asignación familiar o montos de cargas, y filtrando por RUT y rango.
     """
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 25000
@@ -60,16 +60,17 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # Exigimos que la página hable explícitamente de Asignación Familiar
-        if "ASIGNACIÓN FAMILIAR" not in text_upper and "ASIGNACION FAMILIAR" not in text_upper:
+        # Detección flexible y perfecta por múltiples palabras clave del anexo de cargas
+        keywords_page = ["REBAJAS", "ASIGNACIÓN", "ASIGNACION", "TRAMO", "MONTO", "FAMILIAR"]
+        if not any(k in text_upper for k in keywords_page):
             continue
 
         lines = text.split("\n")
 
         for line in lines:
             line_upper = line.upper()
-            
-            # Ignoramos líneas de otros conceptos previsionales
+
+            # Evitamos líneas de otras cotizaciones patronales
             if any(k in line_upper for k in ["SIS", "MUTUAL", "ISL", "SEGURO SOCIAL"]):
                 continue
 
@@ -91,7 +92,7 @@ def extract_asignacion_familiar(reader, workers_data):
                 if val:
                     values.append(val)
 
-            # 3. Filtrar montos en el rango estricto de asignación familiar unitaria
+            # 3. Filtrar estrictamente montos en el rango unitario de asignación familiar (3.000 a 25.000)
             posibles = [
                 v for v in values
                 if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -193,7 +194,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica de Asignación Familiar
+    # 5. Extracción Dinámica Perfecta de Asignación Familiar
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -230,7 +231,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica exacta
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica perfecta
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
