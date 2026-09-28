@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales (SIS, AFC, ISL, Rent. Protegida, Seguro Social) y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales fijos sin desfase y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -40,6 +40,14 @@ def parse_clp(value) -> Optional[int]:
     if text.isdigit():
         return int(text)
     return None
+
+def safe_int(value):
+    try:
+        if value is None:
+            return 0
+        return int(float(value))
+    except:
+        return 0
 
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -75,6 +83,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                                     "isl": 0,
                                     "rent_prot": 0,
                                     "s_social": 0,
+                                    "s_social_01": 0,
                                     "asig_fam": 0,
                                     "bono": 0
                                 }
@@ -125,6 +134,9 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["s_social"] = nums[2]
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
+                            # Calculamos o asignamos el 0.1% proporcional si corresponde
+                            s_imp = workers_data[rut]["sueldo_imponible"]
+                            workers_data[rut]["s_social_01"] = int(round(s_imp * 0.001)) if s_imp > 0 else 0
 
         # 5. Detección automática inicial de Asignación Familiar
         if "ASIGNACION" in text.upper() or "ASIGNACIÓN" in text.upper() or "REBAJAS" in text.upper() or "TRAMO" in text.upper():
@@ -143,7 +155,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
-        df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "asig_fam", "bono"])
+        df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "s_social_01", "asig_fam", "bono"])
     return df
 
 def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, bonos_dict: dict) -> bytes:
@@ -153,6 +165,14 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
     
     ws = wb[SHEET_NAME]
     
+    # Columnas fijas (1-based) para aportes patronales sin desfase
+    COL_SIS = 14          # N
+    COL_AFC_EMP = 15      # O
+    COL_ISL = 16          # P
+    COL_RENT_PROT = 17    # Q
+    COL_S_SOCIAL = 18     # R
+    COL_S_SOCIAL_01 = 19  # S
+
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
         norm_cell = normalize_rut(cell_val)
@@ -164,27 +184,27 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
                         if TARGET_MONTH in mes_val:
                             # 1. Sueldo Bruto/Imponible -> Columna B (2)
-                            ws.cell(r_sub, 2).value = rec["sueldo_imponible"]
+                            ws.cell(row=r_sub, column=2).value = safe_int(rec["sueldo_imponible"])
                             
                             # 2. Cotización Previsional (Columna C) -> Fórmula exacta
-                            cotiz_val = rec["cotiz_afp"]
-                            afc_t_val = rec["afc_trab"]
-                            salud_val = rec["salud_fonasa"]
-                            ws.cell(r_sub, 3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
+                            cotiz_val = safe_int(rec["cotiz_afp"])
+                            afc_t_val = safe_int(rec["afc_trab"])
+                            salud_val = safe_int(rec["salud_fonasa"])
+                            ws.cell(row=r_sub, column=3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
                             # 3. Asignación Familiar -> Columna K (11)
-                            ws.cell(r_sub, 11).value = cargas_dict.get(norm_cell, rec["asig_fam"])
+                            ws.cell(row=r_sub, column=11).value = safe_int(cargas_dict.get(norm_cell, rec["asig_fam"]))
                             
                             # 4. Bonos -> Columna L (12)
-                            ws.cell(r_sub, 12).value = bonos_dict.get(norm_cell, 0)
+                            ws.cell(row=r_sub, column=12).value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # 5. Aportes Patronales exactos (Alineación perfecta con la plantilla)
-                            ws.cell(r_sub, 14).value = rec["sis"]       # SIS -> Columna N (14)
-                            ws.cell(r_sub, 15).value = rec["afc_emp"]   # AFC Empleador -> Columna O (15)
-                            ws.cell(r_sub, 16).value = rec["isl"]       # ISL / Mutual -> Columna P (16)
-                            ws.cell(r_sub, 17).value = rec["rent_prot"] # Rent. Protegida -> Columna Q (17)
-                            ws.cell(r_sub, 18).value = rec["s_social"]  # S. Social -> Columna R (18)
-                            ws.cell(r_sub, 19).value = rec["rent_prot"] # S. Social 0,1% -> Columna S (19)
+                            # 5. Aportes Patronales estrictos y fijos sin desfase
+                            ws.cell(row=r_sub, column=COL_SIS).value = safe_int(rec.get("sis"))
+                            ws.cell(row=r_sub, column=COL_AFC_EMP).value = safe_int(rec.get("afc_emp"))
+                            ws.cell(row=r_sub, column=COL_ISL).value = safe_int(rec.get("isl"))
+                            ws.cell(row=r_sub, column=COL_RENT_PROT).value = safe_int(rec.get("rent_prot"))
+                            ws.cell(row=r_sub, column=COL_S_SOCIAL).value = safe_int(rec.get("s_social"))
+                            ws.cell(row=r_sub, column=COL_S_SOCIAL_01).value = safe_int(rec.get("s_social_01"))
                             break
                             
     output = io.BytesIO()
@@ -242,7 +262,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y columnas alineadas!")
+            st.success("¡Planilla generada con éxito absoluto y columnas fijas sin desfase!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
