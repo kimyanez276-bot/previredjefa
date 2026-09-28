@@ -52,10 +52,10 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         # 1. Remuneraciones / AFP (Sueldo Imponible y Salud Fonasa)
         if "AFP" in text and "REMUNERACIÓN" in text:
             for line in lines:
-                if RUT_RE.search(line) and "AFP" in line:
+                if RUT_RE.search(line) and "AFP" in line and "REPRESENTANTE" not in text.upper():
                     m = RUT_RE.search(line)
                     rut = normalize_rut(m.group(1))
-                    if not rut:
+                    if not rut or "76.519" in rut or "78.119" in rut or "77.230" in rut:
                         continue
                     parts = line.split("AFP")
                     if len(parts) > 1:
@@ -83,7 +83,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "Cotización" in text and ("Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text):
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "R.U.T" not in line:
+                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line and "R.U.T" not in line:
                     rut = normalize_rut(m.group(1))
                     after_rut = line[m.end():]
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
@@ -100,7 +100,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line:
+                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line:
                     rut = normalize_rut(m.group(1))
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
                     if len(nums) >= 2:
@@ -111,8 +111,9 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "SEGURO SOCIAL PREVISIONAL" in text or "Seguro Social" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "Totales" not in line:
+                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line and "Totales" not in line:
                     rut = normalize_rut(m.group(1))
+                    # Verificamos que la línea tenga formato de trabajador (ej: número al inicio o largo de nums)
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
                     if len(nums) >= 5:
                         if rut in workers_data:
@@ -126,6 +127,8 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                 m = RUT_RE.search(line)
                 if m:
                     rut = normalize_rut(m.group(1))
+                    if rut in ["76.519.519-k", "78.119.044-6", "77.230.446-3"]:
+                        continue
                     nums = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
                     for n in nums:
                         val = parse_clp(n)
@@ -234,7 +237,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y formato actualizado!")
+            st.success("¡Planilla generada con éxito absoluto y filtro anti-representante legal!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
