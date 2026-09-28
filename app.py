@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales con alineación perfecta de columnas y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales con alineación exacta y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -189,13 +189,13 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                             # 4. Bonos -> Columna L
                             ws[f"L{r_sub}"].value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # 5. Aportes Patronales usando LETRAS EXACTAS en celdas corporativas reales
-                            ws[f"R{r_sub}"].value = safe_int(rec.get("sis"))         # SIS -> R
-                            ws[f"S{r_sub}"].value = safe_int(rec.get("afc_emp"))     # AFC Empleador -> S
-                            ws[f"T{r_sub}"].value = safe_int(rec.get("isl"))         # ISL / Mutual -> T
-                            ws[f"U{r_sub}"].value = safe_int(rec.get("rent_prot"))   # Rent. Protegida -> U
-                            ws[f"V{r_sub}"].value = safe_int(rec.get("s_social"))    # S. Social -> V
-                            ws[f"W{r_sub}"].value = safe_int(rec.get("s_social_01")) # S. Social 0,1% -> W
+                            # 5. Aportes Patronales alineados exactamente a la tabla del trabajador (M a R)
+                            ws[f"M{r_sub}"].value = safe_int(rec.get("sis"))         # SIS -> M
+                            ws[f"N{r_sub}"].value = safe_int(rec.get("afc_emp"))     # AFC Empleador -> N
+                            ws[f"O{r_sub}"].value = safe_int(rec.get("isl"))         # ISL / Mutual -> O
+                            ws[f"P{r_sub}"].value = safe_int(rec.get("rent_prot"))   # NT. PROTEG. -> P
+                            ws[f"Q{r_sub}"].value = safe_int(rec.get("s_social"))    # S. SOCIAL -> Q
+                            ws[f"R{r_sub}"].value = safe_int(rec.get("s_social_01")) # S. SOCIAL (0,1%) -> R
                             break
                             
     output = io.BytesIO()
@@ -253,7 +253,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y celdas R a W sincronizadas!")
+            st.success("¡Planilla generada con éxito absoluto y celdas M a R sincronizadas!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
