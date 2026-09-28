@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa (actualizada)**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales (SIS, AFC, ISL, Rent. Protegida, Seguro Social) y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales (SIS, AFC, ISL, Rent. Protegida, Seguro Social) y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -170,13 +170,13 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                             # 4. Bonos -> Columna L (12)
                             ws.cell(r_sub, 12).value = bonos_dict.get(norm_cell, 0)
                             
-                            # 5. Aportes Patronales exactos con Rentabilidad Protegida en Columna Q (17)
+                            # 5. Aportes Patronales exactos (Plantilla Actualizada)
                             ws.cell(r_sub, 14).value = rec["sis"]       # SIS -> Columna N (14)
                             ws.cell(r_sub, 15).value = rec["afc_emp"]   # AFC Empleador -> Columna O (15)
                             ws.cell(r_sub, 16).value = rec["isl"]       # ISL / Mutual -> Columna P (16)
-                            ws.cell(r_sub, 17).value = rec["rent_prot"] # Rent. Protegida -> Columna Q (17)
-                            ws.cell(r_sub, 18).value = rec["s_social"]  # Seguro Social -> Columna R (18)
-                            ws.cell(r_sub, 19).value = rec["s_social"]  # S. Social 0,1% -> Columna S (19)
+                            ws.cell(r_sub, 17).value = rec["rent_prot"] # T. Protegida -> Columna Q (17)
+                            ws.cell(r_sub, 18).value = rec["s_social"]  # S. Social -> Columna R (18)
+                            ws.cell(r_sub, 19).value = rec["rent_prot"] # S. Social 0,1% -> Columna S (19)
                             break
                             
     output = io.BytesIO()
@@ -186,7 +186,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
 
 # Interfaz Streamlit
 pdf_file = st.file_uploader("1. Sube tu PDF de Previred del mes", type=["pdf"])
-template_file = st.file_uploader("2. Sube la plantilla Excel de la empresa (Actualizada)", type=["xlsx"])
+template_file = st.file_uploader("2. Sube la plantilla Excel de la empresa", type=["xlsx"])
 
 if pdf_file and template_file:
     st.success("¡Archivos cargados correctamente!")
@@ -234,7 +234,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y columnas alineadas a la perfección!")
+            st.success("¡Planilla generada con éxito absoluto y formato actualizado!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
