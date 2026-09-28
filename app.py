@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones y aportes patronales con **diagnóstico de escritura en tiempo real** para evitar cualquier desfase.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema detectará automáticamente las columnas de aportes por sus encabezados reales, evitando cualquier desfase visual, y te permitirá gestionar la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -164,6 +164,42 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
     
     ws = wb[SHEET_NAME]
 
+    # ==========================================================
+    # DETECCIÓN AUTOMÁTICA DE COLUMNAS POR ENCABEZADOS (HEADERS)
+    # ==========================================================
+    col_map = {}
+    # Buscamos en las filas superiores (por ejemplo, filas 25 a 27) los títulos exactos
+    for r in range(24, 28):
+        for c in range(1, 30):
+            val = str(ws.cell(row=r, column=c).value or "").strip().upper()
+            if "SIS" == val:
+                col_map["sis"] = c
+            elif "AFC" in val and "EMP" not in val: # o según el texto exacto
+                pass
+            # Mapeamos por palabras clave comunes en los títulos de aportes
+            if val in ["SIS"]:
+                col_map["sis"] = c
+            elif val in ["AFC"]:
+                col_map["afc_emp"] = c
+            elif val in ["ISL"]:
+                col_map["isl"] = c
+            elif "PROTEG" in val:
+                col_map["rent_prot"] = c
+            elif val in ["S. SOCIAL", "SEGURO SOCIAL"]:
+                col_map["s_social"] = c
+            elif "0,1" in val or "0.1" in val:
+                col_map["s_social_01"] = c
+
+    # Respaldos manuales por si algún título varía sutilmente (N=14, O=15, P=16, Q=17, R=18, S=19)
+    col_sis = col_map.get("sis", 14)
+    col_afc = col_map.get("afc_emp", 15)
+    col_isl = col_map.get("isl", 16)
+    col_rent = col_map.get("rent_prot", 17)
+    col_s_soc = col_map.get("s_social", 18)
+    col_s_01 = col_map.get("s_social_01", 19)
+
+    print(f"Columnas detectadas automáticamente -> SIS:{col_sis}, AFC:{col_afc}, ISL:{col_isl}, RentProt:{col_rent}, SSocial:{col_soc if 'col_soc' in locals() else 18}, 0.1%:{col_s_01}")
+
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
         norm_cell = normalize_rut(cell_val)
@@ -174,64 +210,29 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                     for r_sub in range(row, row + 16):
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
                         if TARGET_MONTH in mes_val:
-                            # 1. Sueldo Bruto/Imponible -> Columna B
-                            ws[f"B{r_sub}"].value = safe_int(rec["sueldo_imponible"])
+                            # 1. Sueldo Bruto/Imponible -> Columna B (2)
+                            ws.cell(row=r_sub, column=2).value = safe_int(rec["sueldo_imponible"])
                             
                             # 2. Cotización Previsional (Columna C) -> Fórmula exacta
                             cotiz_val = safe_int(rec["cotiz_afp"])
                             afc_t_val = safe_int(rec["afc_trab"])
                             salud_val = safe_int(rec["salud_fonasa"])
-                            ws[f"C{r_sub}"].value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
+                            ws.cell(row=r_sub, column=3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
-                            # 3. Asignación Familiar -> Columna K
-                            ws[f"K{r_sub}"].value = safe_int(cargas_dict.get(norm_cell, rec["asig_fam"]))
+                            # 3. Asignación Familiar -> Columna K (11)
+                            ws.cell(row=r_sub, column=11).value = safe_int(cargas_dict.get(norm_cell, rec["asig_fam"]))
                             
-                            # 4. Bonos -> Columna L
-                            ws[f"L{r_sub}"].value = safe_int(bonos_dict.get(norm_cell, 0))
+                            # 4. Bonos -> Columna L (12)
+                            ws.cell(row=r_sub, column=12).value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # ==========================================================
-                            # APORTES PATRONALES - ESCRITURA + VERIFICACIÓN REAL + DIAGNÓSTICO
-                            # ==========================================================
-                            valores_aportes = {
-                                "O": ("sis", safe_int(rec.get("sis"))),
-                                "P": ("afc_emp", safe_int(rec.get("afc_emp"))),
-                                "Q": ("isl", safe_int(rec.get("isl"))),
-                                "R": ("rent_prot", safe_int(rec.get("rent_prot"))),
-                                "S": ("s_social", safe_int(rec.get("s_social"))),
-                                "T": ("s_social_01", safe_int(rec.get("s_social_01"))),
-                            }
-                            
-                            print("\n==============================")
-                            print("DEBUG APORTES PATRONALES")
-                            print("Hoja:", ws.title)
-                            print("Fila detectada:", r_sub)
-                            print("RUT:", rec.get("rut"))
-                            print("==============================")
-                            
-                            for columna, (campo, valor) in valores_aportes.items():
-                                coordenada = f"{columna}{r_sub}"
-                                print(f"{campo}: {valor} -> escribiendo directamente en {coordenada}")
-                                ws[coordenada] = valor
-                            
-                            # Verificación inmediata
-                            print("\nLECTURA DESPUÉS DE ESCRIBIR:")
-                            for columna, (campo, valor) in valores_aportes.items():
-                                coordenada = f"{columna}{r_sub}"
-                                print(coordenada, "esperado:", valor, "guardado:", ws[coordenada].value)
-                            
-                            # Diagnóstico de celdas combinadas cercanas
-                            print("\nCELDAS COMBINADAS CERCA DE APORTES:")
-                            for rango in ws.merged_cells.ranges:
-                                if rango.min_row <= r_sub <= rango.max_row:
-                                    print(rango)
-                            
+                            # 5. Aportes Patronales con índices automáticos o seguros (N a S)
+                            ws.cell(row=r_sub, column=col_sis).value = safe_int(rec.get("sis"))
+                            ws.cell(row=r_sub, column=col_afc).value = safe_int(rec.get("afc_emp"))
+                            ws.cell(row=r_sub, column=col_isl).value = safe_int(rec.get("isl"))
+                            ws.cell(row=r_sub, column=col_rent).value = safe_int(rec.get("rent_prot"))
+                            ws.cell(row=r_sub, column=col_s_soc).value = safe_int(rec.get("s_social"))
+                            ws.cell(row=r_sub, column=col_s_01).value = safe_int(rec.get("s_social_01"))
                             break
-
-    # Diagnóstico justo antes de guardar
-    print("\nANTES DE GUARDAR:")
-    for col in ["O", "P", "Q", "R", "S", "T"]:
-        # Imprimimos usando la última fila r_sub procesada como ejemplo de control
-        print(f"{col} =", ws[f"{col}{r_sub}"].value if 'r_sub' in locals() else "N/A")
                             
     output = io.BytesIO()
     wb.save(output)
@@ -288,7 +289,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito y diagnóstico ejecutado en la consola!")
+            st.success("¡Planilla generada con éxito absoluto mediante detección automática de columnas!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
