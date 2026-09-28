@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales blindados de la O a la T y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones y aportes patronales con **diagnóstico de escritura en tiempo real** para evitar cualquier desfase.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -46,7 +46,7 @@ def safe_int(value):
         if value is None or str(value).strip() == "":
             return 0
         return int(float(value))
-    except:
+    except (TypeError, ValueError):
         return 0
 
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
@@ -189,14 +189,49 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                             # 4. Bonos -> Columna L
                             ws[f"L{r_sub}"].value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # 5. Aportes Patronales estrictos y blindados de la O a la T
-                            ws[f"O{r_sub}"].value = safe_int(rec.get("sis"))
-                            ws[f"P{r_sub}"].value = safe_int(rec.get("afc_emp"))
-                            ws[f"Q{r_sub}"].value = safe_int(rec.get("isl"))
-                            ws[f"R{r_sub}"].value = safe_int(rec.get("rent_prot"))
-                            ws[f"S{r_sub}"].value = safe_int(rec.get("s_social"))
-                            ws[f"T{r_sub}"].value = safe_int(rec.get("s_social_01"))
+                            # ==========================================================
+                            # APORTES PATRONALES - ESCRITURA + VERIFICACIÓN REAL + DIAGNÓSTICO
+                            # ==========================================================
+                            valores_aportes = {
+                                "O": ("sis", safe_int(rec.get("sis"))),
+                                "P": ("afc_emp", safe_int(rec.get("afc_emp"))),
+                                "Q": ("isl", safe_int(rec.get("isl"))),
+                                "R": ("rent_prot", safe_int(rec.get("rent_prot"))),
+                                "S": ("s_social", safe_int(rec.get("s_social"))),
+                                "T": ("s_social_01", safe_int(rec.get("s_social_01"))),
+                            }
+                            
+                            print("\n==============================")
+                            print("DEBUG APORTES PATRONALES")
+                            print("Hoja:", ws.title)
+                            print("Fila detectada:", r_sub)
+                            print("RUT:", rec.get("rut"))
+                            print("==============================")
+                            
+                            for columna, (campo, valor) in valores_aportes.items():
+                                coordenada = f"{columna}{r_sub}"
+                                print(f"{campo}: {valor} -> escribiendo directamente en {coordenada}")
+                                ws[coordenada] = valor
+                            
+                            # Verificación inmediata
+                            print("\nLECTURA DESPUÉS DE ESCRIBIR:")
+                            for columna, (campo, valor) in valores_aportes.items():
+                                coordenada = f"{columna}{r_sub}"
+                                print(coordenada, "esperado:", valor, "guardado:", ws[coordenada].value)
+                            
+                            # Diagnóstico de celdas combinadas cercanas
+                            print("\nCELDAS COMBINADAS CERCA DE APORTES:")
+                            for rango in ws.merged_cells.ranges:
+                                if rango.min_row <= r_sub <= rango.max_row:
+                                    print(rango)
+                            
                             break
+
+    # Diagnóstico justo antes de guardar
+    print("\nANTES DE GUARDAR:")
+    for col in ["O", "P", "Q", "R", "S", "T"]:
+        # Imprimimos usando la última fila r_sub procesada como ejemplo de control
+        print(f"{col} =", ws[f"{col}{r_sub}"].value if 'r_sub' in locals() else "N/A")
                             
     output = io.BytesIO()
     wb.save(output)
@@ -253,7 +288,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y celdas O a T blindadas!")
+            st.success("¡Planilla generada con éxito y diagnóstico ejecutado en la consola!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
