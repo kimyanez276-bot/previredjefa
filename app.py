@@ -43,13 +43,18 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar escaneando todas las líneas con RUT en el PDF,
-    buscando montos en el rango de cargas unitarias (3.000 a 25.000) y excluyendo salud/SIS.
-    """
-    MIN_AMOUNT = 3000
-    MAX_AMOUNT = 25000
+    Extrae la Asignación Familiar desde el PDF de Previred.
 
-    # Inicializar todos en 0 por defecto
+    Reglas aplicadas:
+    1. Solo procesa páginas con palabras clave de cargas/rebajas (ASIGNACION, REBAJAS, IPS, TRAMO).
+    2. Excluye líneas con aportes (SIS, AFC, MUTUAL, etc.).
+    3. Asocia monto correcto por RUT (rango típico < 25.000).
+    4. Inicializa todos los trabajadores en 0 si no tienen cargas.
+    """
+    SECTION_KEYWORDS = ["ASIGNACION", "ASIGNACIÓN", "REBAJAS", "IPS", "TRAMO"]
+    EXCLUDE_KEYWORDS = ["SIS", "SEGURO", "MUTUAL", "ISL", "AFC", "COTIZACION"]
+
+    # Inicializar todos en 0
     for rut in workers_data:
         workers_data[rut]["asig_fam"] = 0
 
@@ -58,47 +63,73 @@ def extract_asignacion_familiar(reader, workers_data):
         if not text:
             continue
 
+        text_upper = text.upper()
+
+        # 1. Filtrar solo páginas relevantes
+        if not any(keyword in text_upper for keyword in SECTION_KEYWORDS):
+            continue
+
         lines = text.split("\n")
 
         for line in lines:
             line_upper = line.upper()
 
-            # Excluimos líneas que correspondan a cotizaciones de Salud (Fonasa), SIS, Mutual o AFC
-            if any(k in line_upper for k in ["SALUD", "FONASA", "SIS", "MUTUAL", "ISL", "CESANTIA", "AFC"]):
+            # 2. Excluir líneas de aportes
+            if any(excl in line_upper for excl in EXCLUDE_KEYWORDS):
                 continue
 
-            # 1. Buscar RUT en la línea
+            # 3. Buscar RUT
             rut_match = RUT_RE.search(line)
             if not rut_match:
                 continue
 
             rut = normalize_rut(rut_match.group())
 
-            # 2. Extraer todos los números de la línea
-            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
+            # 4. Extraer números de la línea
+            numbers = re.findall(r"\d{1,3}(?:\.\d{3})+|\d+", line)
             if not numbers:
                 continue
 
-            values = []
+            # Convertir a enteros CLP
+            valores = []
             for n in numbers:
                 val = parse_clp(n)
                 if val:
-                    values.append(val)
+                    valores.append(val)
 
-            # 3. Filtrar estrictamente montos en el rango unitario de asignación familiar
-            posibles = [
-                v for v in values
-                if MIN_AMOUNT <= v <= MAX_AMOUNT
-            ]
-
-            if not posibles:
+            if not valores:
                 continue
 
-            # 4. Asignar el monto correcto
-            monto = posibles[-1]
+            # 5. Filtrar rango realista de asignación familiar
+            candidatos = [
+                v for v in valores
+                if 3000 <= v <= 25000
+            ]
 
+            if not candidatos:
+                continue
+
+            # 6. Seleccionar el monto correcto (último valor de la fila)
+            monto = candidatos[-1]
+
+            # 7. Asignar al trabajador
             if rut in workers_data:
                 workers_data[rut]["asig_fam"] = monto
+            else:
+                workers_data[rut] = {
+                    "rut": rut,
+                    "sueldo_imponible": 0,
+                    "salud_fonasa": 0,
+                    "cotiz_afp": 0,
+                    "afc_trab": 0,
+                    "sis": 0,
+                    "afc_emp": 0,
+                    "isl": 0,
+                    "rent_prot": 0,
+                    "s_social": 0,
+                    "impto_unico": 0,
+                    "asig_fam": monto
+                }
 
     return workers_data
 
@@ -187,7 +218,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica Definitiva de Asignación Familiar
+    # 5. Integración de la función Pro de Asignación Familiar
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -224,7 +255,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica definitiva
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -249,17 +280,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Asignación Familiar Definitiva:")
+        st.subheader("Datos Extraídos con Asignación Familiar Pro:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial Pro", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
             st.success("¡Planilla generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Final Definitivo",
+                label="📥 Descargar Libro de Remuneraciones Final Pro",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Definitivas.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final_Pro.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
