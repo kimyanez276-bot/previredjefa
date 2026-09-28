@@ -43,11 +43,11 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar estrictamente desde la sección de rebajas/cargas de Previred,
-    evitando confundirla con cotizaciones de salud u otros montos.
+    Extrae la Asignación Familiar buscando de forma inteligente en todo el PDF
+    cualquier línea con RUT y un monto válido en el rango de cargas (3.000 a 50.000).
     """
     MIN_AMOUNT = 3000
-    MAX_AMOUNT = 25000  # Rango exacto y acotado para asignación familiar unitaria
+    MAX_AMOUNT = 50000
 
     # Inicializar todos en 0 por defecto
     for rut in workers_data:
@@ -58,23 +58,17 @@ def extract_asignacion_familiar(reader, workers_data):
         if not text:
             continue
 
-        text_upper = text.upper()
-
-        # 1. Detectar páginas que contengan información de rebajas o cargas familiares
-        if not any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "REBAJAS", "TRAMO", "SIMPLE"]):
-            continue
-
         lines = text.split("\n")
 
         for line in lines:
-            # 2. Buscar RUT en la línea
+            # 1. Buscar RUT en la línea
             rut_match = RUT_RE.search(line)
             if not rut_match:
                 continue
 
             rut = normalize_rut(rut_match.group())
 
-            # 3. Extraer números de la línea
+            # 2. Extraer todos los números de la línea
             numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
             if not numbers:
                 continue
@@ -85,7 +79,8 @@ def extract_asignacion_familiar(reader, workers_data):
                 if val:
                     values.append(val)
 
-            # 4. Filtrar montos dentro del rango estrictamente de asignación familiar
+            # 3. Filtrar montos dentro del rango exclusivo de asignación familiar
+            # Excluimos valores que correspondan a sueldos imponibles o cotizaciones grandes
             posibles = [
                 v for v in values
                 if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -94,12 +89,14 @@ def extract_asignacion_familiar(reader, workers_data):
             if not posibles:
                 continue
 
-            # 5. El monto correcto de asignación familiar
+            # 4. El monto de la asignación familiar es el valor válido encontrado en la línea
             monto = posibles[-1]
 
-            # 6. Asignar al trabajador
+            # 5. Asignar al trabajador si corresponde
             if rut in workers_data:
-                workers_data[rut]["asig_fam"] = monto
+                # Si ya tiene un monto menor o 0, asignamos el real de cargas
+                if workers_data[rut]["asig_fam"] == 0:
+                    workers_data[rut]["asig_fam"] = monto
             else:
                 workers_data[rut] = {
                     "rut": rut,
