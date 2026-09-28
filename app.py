@@ -43,8 +43,8 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar buscando la sección de cargas que contenga los encabezados
-    de tramos/rebajas y asociando el valor correcto por RUT.
+    Extrae la Asignación Familiar buscando de forma directa en las páginas que contengan
+    los conceptos de Asignación, Rebajas y la columna Monto.
     """
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 25000
@@ -60,8 +60,8 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # Validamos que la página pertenezca al anexo de cargas/asignación familiar o rebajas
-        if any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "REBAJAS", "TRAMO", "SIMPLE", "INVALIDA"]):
+        # Verificamos si la página contiene los términos clave de asignación familiar y la columna monto
+        if ("ASIGNACIÓN" in text_upper or "ASIGNACION" in text_upper or "REBAJAS" in text_upper) and "MONTO" in text_upper:
             lines = text.split("\n")
 
             for line in lines:
@@ -92,7 +92,7 @@ def extract_asignacion_familiar(reader, workers_data):
                 if not posibles:
                     continue
 
-                # 4. El monto de la asignación familiar correspondiente a la columna respectiva
+                # 4. El monto de la asignación familiar correspondiente
                 monto = posibles[-1]
 
                 # 5. Asignar al trabajador si existe en el registro
@@ -238,7 +238,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica con filtro de monto
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
