@@ -43,8 +43,8 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Localiza la página de Asignación Familiar en el PDF mediante el encabezado general,
-    y extrae con precisión el monto de cargas por RUT.
+    Extrae la Asignación Familiar buscando la sección de cargas que contenga los encabezados
+    de tramos/rebajas y asociando el valor correcto por RUT.
     """
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 25000
@@ -60,17 +60,19 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # Identificar si la página es el anexo de Asignación Familiar / Rebajas
-        if "ASIGNACION" in text_upper or "ASIGNACIÓN" in text_upper or ("REBAJAS" in text_upper and "TRAMO" in text_upper):
+        # Validamos que la página pertenezca al anexo de cargas/asignación familiar o rebajas
+        if any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "REBAJAS", "TRAMO", "SIMPLE", "INVALIDA"]):
             lines = text.split("\n")
+
             for line in lines:
+                # 1. Buscar RUT en la línea
                 rut_match = RUT_RE.search(line)
                 if not rut_match:
                     continue
 
                 rut = normalize_rut(rut_match.group())
 
-                # Extraer números de la línea
+                # 2. Extraer todos los números de la línea
                 numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
                 if not numbers:
                     continue
@@ -81,7 +83,7 @@ def extract_asignacion_familiar(reader, workers_data):
                     if val:
                         values.append(val)
 
-                # Filtrar dentro del rango exclusivo de asignación familiar unitaria
+                # 3. Filtrar estrictamente montos en el rango unitario de asignación familiar (3.000 a 25.000)
                 posibles = [
                     v for v in values
                     if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -90,8 +92,10 @@ def extract_asignacion_familiar(reader, workers_data):
                 if not posibles:
                     continue
 
+                # 4. El monto de la asignación familiar correspondiente a la columna respectiva
                 monto = posibles[-1]
 
+                # 5. Asignar al trabajador si existe en el registro
                 if rut in workers_data:
                     workers_data[rut]["asig_fam"] = monto
                 else:
@@ -197,7 +201,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica de Asignación Familiar Localizada
+    # 5. Extracción Dinámica de Asignación Familiar
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -234,7 +238,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica localizada
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -259,7 +263,7 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Asignación Familiar Localizada:")
+        st.subheader("Datos Extraídos con Asignación Familiar Dinámica:")
         st.dataframe(df_extracted, use_container_width=True)
         
         if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
