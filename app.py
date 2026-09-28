@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales (SIS, AFC, ISL) y asignación familiar para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, impuesto único, aportes patronales (SIS, AFC, ISL) y te permitirá verificar la **Asignación Familiar** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -127,8 +127,8 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-        # 5. Detección específica de Asignación Familiar en Anexos IPS
-        if "ASIGNACION" in text.upper() or "ASIGNACIÓN" in text.upper() or "REBAJAS" in text.upper():
+        # 5. Detección automática de Asignación Familiar en Anexos IPS / Cargas
+        if "ASIGNACION" in text.upper() or "ASIGNACIÓN" in text.upper() or "REBAJAS" in text.upper() or "TRAMO" in text.upper():
             for line in lines:
                 m = RUT_RE.search(line)
                 if m:
@@ -145,14 +145,13 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "impto_unico", "asig_fam"])
     return df
 
-def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
+def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict) -> bytes:
     wb = load_workbook(io.BytesIO(template_bytes))
     if SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel del cliente.")
     
     ws = wb[SHEET_NAME]
     
-    # Recorremos el Excel buscando las secciones de cada trabajador por su RUT
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
         norm_cell = normalize_rut(cell_val)
@@ -160,7 +159,6 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
         if norm_cell:
             for _, rec in df.iterrows():
                 if normalize_rut(rec["rut"]) == norm_cell:
-                    # Buscamos la fila correspondiente al mes objetivo dentro de la sección del trabajador
                     for r_sub in range(row, row + 16):
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
                         if TARGET_MONTH in mes_val:
@@ -176,8 +174,8 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14)
-                            ws.cell(r_sub, 14).value = rec["asig_fam"]
+                            # 4. Asignación Familiar (Columna N / 14) -> Asignación validada
+                            ws.cell(r_sub, 14).value = cargas_dict.get(norm_cell, rec["asig_fam"])
                             
                             # 5. Aportes Patronales exactos (Segunda tabla de aportes)
                             ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
@@ -205,14 +203,33 @@ if pdf_file and template_file:
         st.subheader("📊 Datos Extraídos para el Cliente:")
         st.dataframe(df_extracted, use_container_width=True)
         
+        # Alerta y Panel rápido de verificación de Asignación Familiar
+        st.warning("⚠️ **Verificación de Asignación Familiar (Agosto):** Revisa si algún trabajador registra cargas este mes y ajusta su monto si es necesario antes de generar el Excel definitivo.")
+        
+        cargas_dict = {}
+        for idx, row in df_extracted.iterrows():
+            r = row["rut"]
+            auto_val = int(row["asig_fam"])
+            # Solo mostramos el input si detectó algo o para que puedas verificar rápido
+            val_carga = st.number_input(
+                label=f"Asignación Familiar para RUT: {r}",
+                min_value=0,
+                max_value=50000,
+                value=auto_val,
+                step=1000,
+                key=f"carga_verif_{r}"
+            )
+            cargas_dict[r] = val_carga
+            df_extracted.loc[idx, "asig_fam"] = val_carga
+        
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
-            final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla del cliente generada con éxito absoluto!")
+            final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict)
+            st.success("¡Planilla del cliente generada con éxito absoluto y SIS completo!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
                 data=final_excel,
-                file_name="Remuner_Cliente_Actualizado.xlsx",
+                file_name="Remuneraciones_Cliente_Definitivo.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
