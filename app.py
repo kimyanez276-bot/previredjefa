@@ -55,7 +55,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                 if RUT_RE.search(line) and "AFP" in line and "REPRESENTANTE" not in text.upper():
                     m = RUT_RE.search(line)
                     rut = normalize_rut(m.group(1))
-                    if not rut or "76.519" in rut or "78.119" in rut or "77.230" in rut:
+                    if not rut or rut in ["76519519-K", "78119044-6", "77230446-3"]:
                         continue
                     parts = line.split("AFP")
                     if len(parts) > 1:
@@ -83,8 +83,10 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "Cotización" in text and ("Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text):
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line and "R.U.T" not in line:
+                if m:
                     rut = normalize_rut(m.group(1))
+                    if rut in ["76519519-K", "78119044-6", "77230446-3"] or "R.U.T" in line:
+                        continue
                     after_rut = line[m.end():]
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", after_rut)]
                     if len(nums) >= 9:
@@ -100,8 +102,10 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line:
+                if m:
                     rut = normalize_rut(m.group(1))
+                    if rut in ["76519519-K", "78119044-6", "77230446-3"]:
+                        continue
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
                     if len(nums) >= 2:
                         if rut in workers_data:
@@ -111,9 +115,10 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         if "SEGURO SOCIAL PREVISIONAL" in text or "Seguro Social" in text:
             for line in lines:
                 m = RUT_RE.search(line)
-                if m and "76.519" not in line and "78.119" not in line and "77.230" not in line and "Totales" not in line:
+                if m:
                     rut = normalize_rut(m.group(1))
-                    # Verificamos que la línea tenga formato de trabajador (ej: número al inicio o largo de nums)
+                    if rut in ["76519519-K", "78119044-6", "77230446-3"] or "Totales" in line:
+                        continue
                     nums = [int(n.replace(".", "")) for n in re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line[m.end():])]
                     if len(nums) >= 5:
                         if rut in workers_data:
@@ -127,7 +132,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                 m = RUT_RE.search(line)
                 if m:
                     rut = normalize_rut(m.group(1))
-                    if rut in ["76.519.519-k", "78.119.044-6", "77.230.446-3"]:
+                    if rut in ["76519519-K", "78119044-6", "77230446-3"]:
                         continue
                     nums = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
                     for n in nums:
@@ -173,11 +178,11 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                             # 4. Bonos -> Columna L (12)
                             ws.cell(r_sub, 12).value = bonos_dict.get(norm_cell, 0)
                             
-                            # 5. Aportes Patronales exactos (Plantilla Actualizada)
+                            # 5. Aportes Patronales exactos (Alineación perfecta con la plantilla)
                             ws.cell(r_sub, 14).value = rec["sis"]       # SIS -> Columna N (14)
                             ws.cell(r_sub, 15).value = rec["afc_emp"]   # AFC Empleador -> Columna O (15)
                             ws.cell(r_sub, 16).value = rec["isl"]       # ISL / Mutual -> Columna P (16)
-                            ws.cell(r_sub, 17).value = rec["rent_prot"] # T. Protegida -> Columna Q (17)
+                            ws.cell(r_sub, 17).value = rec["rent_prot"] # Rent. Protegida -> Columna Q (17)
                             ws.cell(r_sub, 18).value = rec["s_social"]  # S. Social -> Columna R (18)
                             ws.cell(r_sub, 19).value = rec["rent_prot"] # S. Social 0,1% -> Columna S (19)
                             break
@@ -237,7 +242,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y filtro anti-representante legal!")
+            st.success("¡Planilla generada con éxito absoluto y columnas alineadas!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
