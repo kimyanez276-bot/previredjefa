@@ -43,16 +43,18 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar desde el PDF de Previred.
-
-    Reglas aplicadas:
-    1. Solo procesa páginas con palabras clave de cargas/rebajas (ASIGNACION, REBAJAS, IPS, TRAMO).
-    2. Excluye líneas con aportes (SIS, AFC, MUTUAL, etc.).
-    3. Asocia monto correcto por RUT (rango típico < 25.000).
-    4. Inicializa todos los trabajadores en 0 si no tienen cargas.
+    Extrae la Asignación Familiar desde PDF Previred usando búsqueda global
+    sin depender de páginas específicas.
     """
-    SECTION_KEYWORDS = ["ASIGNACION", "ASIGNACIÓN", "REBAJAS", "IPS", "TRAMO"]
-    EXCLUDE_KEYWORDS = ["SIS", "SEGURO", "MUTUAL", "ISL", "AFC", "COTIZACION"]
+    # Palabras que indican línea de cargas
+    INCLUDE_KEYWORDS = [
+        "CARGA", "TRAMO", "SIMPLE", "MATERNAL", "INVALIDA", "MONTO"
+    ]
+
+    # Palabras que deben excluirse (aportes patronales)
+    EXCLUDE_KEYWORDS = [
+        "SIS", "AFC", "MUTUAL", "ISL", "SALUD", "FONASA"
+    ]
 
     # Inicializar todos en 0
     for rut in workers_data:
@@ -63,19 +65,17 @@ def extract_asignacion_familiar(reader, workers_data):
         if not text:
             continue
 
-        text_upper = text.upper()
-
-        # 1. Filtrar solo páginas relevantes
-        if not any(keyword in text_upper for keyword in SECTION_KEYWORDS):
-            continue
-
         lines = text.split("\n")
 
         for line in lines:
             line_upper = line.upper()
 
+            # 1. Debe contener palabras de cargas
+            if not any(k in line_upper for k in INCLUDE_KEYWORDS):
+                continue
+
             # 2. Excluir líneas de aportes
-            if any(excl in line_upper for excl in EXCLUDE_KEYWORDS):
+            if any(k in line_upper for k in EXCLUDE_KEYWORDS):
                 continue
 
             # 3. Buscar RUT
@@ -85,12 +85,11 @@ def extract_asignacion_familiar(reader, workers_data):
 
             rut = normalize_rut(rut_match.group())
 
-            # 4. Extraer números de la línea
+            # 4. Extraer números
             numbers = re.findall(r"\d{1,3}(?:\.\d{3})+|\d+", line)
             if not numbers:
                 continue
 
-            # Convertir a enteros CLP
             valores = []
             for n in numbers:
                 val = parse_clp(n)
@@ -100,7 +99,7 @@ def extract_asignacion_familiar(reader, workers_data):
             if not valores:
                 continue
 
-            # 5. Filtrar rango realista de asignación familiar
+            # 5. Filtrar rango correcto de asignación familiar
             candidatos = [
                 v for v in valores
                 if 3000 <= v <= 25000
@@ -109,10 +108,10 @@ def extract_asignacion_familiar(reader, workers_data):
             if not candidatos:
                 continue
 
-            # 6. Seleccionar el monto correcto (último valor de la fila)
+            # 6. Tomar el monto más probable (último valor)
             monto = candidatos[-1]
 
-            # 7. Asignar al trabajador
+            # 7. Asignar al diccionario
             if rut in workers_data:
                 workers_data[rut]["asig_fam"] = monto
             else:
@@ -218,7 +217,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Integración de la función Pro de Asignación Familiar
+    # 5. Integración de la función
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -255,7 +254,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
+                            # 4. Asignación Familiar (Columna N / 14)
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -280,17 +279,17 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Asignación Familiar Pro:")
+        st.subheader("Datos Extraídos con Asignación Familiar GPT:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Oficial Pro", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
             st.success("¡Planilla generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Final Pro",
+                label="📥 Descargar Libro de Remuneraciones Final",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final_Pro.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
