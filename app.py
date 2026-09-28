@@ -43,8 +43,8 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar exigiendo que la página o línea pertenezca
-    estrictamente al anexo de cargas, evitando confundirse con AFC o aportes patronales.
+    Localiza la página de Asignación Familiar en el PDF mediante el encabezado general,
+    y extrae con precisión el monto de cargas por RUT.
     """
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 25000
@@ -60,67 +60,55 @@ def extract_asignacion_familiar(reader, workers_data):
 
         text_upper = text.upper()
 
-        # FILTRO ESTRICTO: Solo procesar páginas que tengan relación directa con Cargas / Asignación Familiar
-        if not any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "FAMILIAR", "TRAMO", "SIMPLE"]):
-            continue
+        # Identificar si la página es el anexo de Asignación Familiar / Rebajas
+        if "ASIGNACION" in text_upper or "ASIGNACIÓN" in text_upper or ("REBAJAS" in text_upper and "TRAMO" in text_upper):
+            lines = text.split("\n")
+            for line in lines:
+                rut_match = RUT_RE.search(line)
+                if not rut_match:
+                    continue
 
-        lines = text.split("\n")
+                rut = normalize_rut(rut_match.group())
 
-        for line in lines:
-            line_upper = line.upper()
-            
-            # La línea también debe pertenecer a la sección de cargas (evita tablas de aportes patronales)
-            if not any(k in line_upper for k in ["ASIGNACIÓN", "ASIGNACION", "TRAMO", "SIMPLE", "INVALIDA", "MATERNAL", "MONTO", "REBAJAS"]) and not RUT_RE.search(line):
-                continue
+                # Extraer números de la línea
+                numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
+                if not numbers:
+                    continue
 
-            # 1. Buscar RUT en la línea
-            rut_match = RUT_RE.search(line)
-            if not rut_match:
-                continue
+                values = []
+                for n in numbers:
+                    val = parse_clp(n)
+                    if val:
+                        values.append(val)
 
-            rut = normalize_rut(rut_match.group())
+                # Filtrar dentro del rango exclusivo de asignación familiar unitaria
+                posibles = [
+                    v for v in values
+                    if MIN_AMOUNT <= v <= MAX_AMOUNT
+                ]
 
-            # 2. Extraer todos los números de la línea
-            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
-            if not numbers:
-                continue
+                if not posibles:
+                    continue
 
-            values = []
-            for n in numbers:
-                val = parse_clp(n)
-                if val:
-                    values.append(val)
+                monto = posibles[-1]
 
-            # 3. Filtrar montos dentro del rango exclusivo de asignación familiar unitaria
-            posibles = [
-                v for v in values
-                if MIN_AMOUNT <= v <= MAX_AMOUNT
-            ]
-
-            if not posibles:
-                continue
-
-            # 4. El monto real de la asignación familiar
-            monto = posibles[-1]
-
-            # 5. Asignar al trabajador
-            if rut in workers_data:
-                workers_data[rut]["asig_fam"] = monto
-            else:
-                workers_data[rut] = {
-                    "rut": rut,
-                    "sueldo_imponible": 0,
-                    "salud_fonasa": 0,
-                    "cotiz_afp": 0,
-                    "afc_trab": 0,
-                    "sis": 0,
-                    "afc_emp": 0,
-                    "isl": 0,
-                    "rent_prot": 0,
-                    "s_social": 0,
-                    "impto_unico": 0,
-                    "asig_fam": monto
-                }
+                if rut in workers_data:
+                    workers_data[rut]["asig_fam"] = monto
+                else:
+                    workers_data[rut] = {
+                        "rut": rut,
+                        "sueldo_imponible": 0,
+                        "salud_fonasa": 0,
+                        "cotiz_afp": 0,
+                        "afc_trab": 0,
+                        "sis": 0,
+                        "afc_emp": 0,
+                        "isl": 0,
+                        "rent_prot": 0,
+                        "s_social": 0,
+                        "impto_unico": 0,
+                        "asig_fam": monto
+                    }
 
     return workers_data
 
@@ -209,7 +197,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica y Pro de Asignación Familiar con Filtro Estricto de Cargas
+    # 5. Extracción Dinámica de Asignación Familiar Localizada
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -246,7 +234,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro filtrada
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica localizada
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -271,7 +259,7 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Filtro Estricto de Cargas:")
+        st.subheader("Datos Extraídos con Asignación Familiar Localizada:")
         st.dataframe(df_extracted, use_container_width=True)
         
         if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
