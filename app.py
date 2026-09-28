@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
 
 st.markdown("""
-Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales y te permitirá gestionar el control de **Asignación Familiar** para el mes de **Agosto**.
+Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales y la **Asignación Familiar** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -40,6 +40,68 @@ def parse_clp(value) -> Optional[int]:
     if text.isdigit():
         return int(text)
     return None
+
+def extract_asignacion_familiar(reader, workers_data):
+    """
+    Extrae la Asignación Familiar buscando de forma estricta líneas que contengan
+    la palabra CARGA o ASIGNACION junto a un RUT y un monto de tramo válido.
+    """
+    MIN_AMOUNT = 3000
+    MAX_AMOUNT = 25000
+
+    # Inicializar todos en 0 por defecto
+    for rut in workers_data:
+        workers_data[rut]["asig_fam"] = 0
+
+    for page in reader.pages:
+        text = page.extract_text()
+        if not text:
+            continue
+
+        lines = text.split("\n")
+
+        for line in lines:
+            line_upper = line.upper()
+
+            # La línea DEBE hablar de asignación o cargas, y JAMÁS de SIS, Fonasa o AFC
+            if not any(k in line_upper for k in ["ASIGNAC", "CARGA", "REBAJA"]):
+                continue
+            if any(k in line_upper for k in ["SIS", "FONASA", "SALUD", "AFC", "MUTUAL", "ISL"]):
+                continue
+
+            # 1. Buscar RUT en la línea
+            rut_match = RUT_RE.search(line)
+            if not rut_match:
+                continue
+
+            rut = normalize_rut(rut_match.group())
+
+            # 2. Extraer números
+            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
+            if not numbers:
+                continue
+
+            valores = []
+            for n in numbers:
+                val = parse_clp(n)
+                if val:
+                    valores.append(val)
+
+            # 3. Filtrar en el rango de cargas unitarias
+            candidatos = [
+                v for v in valores
+                if MIN_AMOUNT <= v <= MAX_AMOUNT
+            ]
+
+            if not candidatos:
+                continue
+
+            monto = candidatos[-1]
+
+            if rut in workers_data:
+                workers_data[rut]["asig_fam"] = monto
+
+    return workers_data
 
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -126,12 +188,15 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
+    # 5. Extracción Automática de Asignación Familiar
+    workers_data = extract_asignacion_familiar(reader, workers_data)
+
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
         df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "impto_unico", "asig_fam"])
     return df
 
-def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict) -> bytes:
+def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     wb = load_workbook(io.BytesIO(template_bytes))
     if SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel.")
@@ -160,8 +225,8 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict) -
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Asignación manual controlada por alarma
-                            ws.cell(r_sub, 14).value = cargas_dict.get(norm_cell, 0)
+                            # 4. Asignación Familiar (Columna N / 14)
+                            ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
                             ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
@@ -186,37 +251,17 @@ if pdf_file and template_file:
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
         
-        # Panel de Alarma y Control de Asignación Familiar
-        st.warning("⚠️ **Alarma de Control Contable:** Por seguridad normativa, verifica si algún trabajador registra Asignación Familiar este mes e ingresa su monto correspondiente abajo.")
-        
-        cargas_dict = {}
-        st.subheader("📝 Asignación de Cargas Familiares por Trabajador")
-        
-        for idx, row in df_extracted.iterrows():
-            r = row["rut"]
-            # Creamos un input numérico por cada RUT detectado en la empresa
-            val_carga = st.number_input(
-                label=f"Monto Asignación Familiar para RUT: {r}",
-                min_value=0,
-                max_value=100000,
-                value=0,
-                step=1000,
-                key=f"carga_{r}"
-            )
-            cargas_dict[r] = val_carga
-            df_extracted.loc[idx, "asig_fam"] = val_carga
-
-        st.subheader("📊 Datos Extraídos y Listos para Consolidar:")
+        st.subheader("📊 Datos Extraídos Automáticamente:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Oficial con Alarma Controlada", type="primary"):
-            final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict)
-            st.success("¡Planilla generada con éxito absoluto y control verificado!")
+        if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
+            final_excel = write_to_excel(template_file.getvalue(), df_extracted)
+            st.success("¡Planilla generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Final Verificado",
+                label="📥 Descargar Libro de Remuneraciones Final",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Verificadas.xlsx",
+                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
