@@ -9,10 +9,10 @@ from pypdf import PdfReader
 st.set_page_config(page_title="Asesorías Contables Linares - Remuneraciones", layout="wide")
 
 st.title("📊 Asesorías Contables Linares")
-st.subheader("Control de Remuneraciones y Previred - Import. Dong Sheng Ltda.")
+st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube tu archivo PDF de Previred y tu plantilla corporativa. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales y la **Asignación Familiar** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales y la asignación familiar para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -43,7 +43,7 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar buscando de forma estricta líneas que contengan
+    Extrae la Asignación Familiar de forma estricta buscando líneas que contengan
     la palabra CARGA o ASIGNACION junto a un RUT y un monto de tramo válido.
     """
     MIN_AMOUNT = 3000
@@ -199,7 +199,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
 def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     wb = load_workbook(io.BytesIO(template_bytes))
     if SHEET_NAME not in wb.sheetnames:
-        raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel.")
+        raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel del cliente.")
     
     ws = wb[SHEET_NAME]
     
@@ -243,7 +243,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
 
 # Interfaz Streamlit
 pdf_file = st.file_uploader("1. Sube tu PDF de Previred del mes", type=["pdf"])
-template_file = st.file_uploader("2. Sube tu plantilla Excel oficial", type=["xlsx"])
+template_file = st.file_uploader("2. Sube la plantilla Excel de la empresa", type=["xlsx"])
 
 if pdf_file and template_file:
     st.success("¡Archivos cargados correctamente!")
@@ -251,21 +251,21 @@ if pdf_file and template_file:
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
         
-        st.subheader("📊 Datos Extraídos Automáticamente:")
+        st.subheader("📊 Datos Extraídos para el Cliente:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
+        if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted)
-            st.success("¡Planilla generada con éxito absoluto!")
+            st.success("¡Planilla del cliente generada con éxito absoluto!")
             
             st.download_button(
-                label="📥 Descargar Libro de Remuneraciones Final",
+                label="📥 Descargar Libro de Remuneraciones del Cliente",
                 data=final_excel,
-                file_name="IMPORT_DONG_SHENG_Remuneraciones_Final.xlsx",
+                file_name="Remuneraciones_Cliente_Definitivo.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
     except Exception as e:
         st.error(f"Ocurrió un error al procesar los archivos: {e}")
 else:
-    st.info("Por favor, sube ambos archivos para comenzar.")
+    st.info("Por favor, sube el PDF de Previred y el Excel de la empresa para comenzar.")
