@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales y la asignación familiar para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, fórmulas previsionales, impuesto único, aportes patronales (SIS, AFC, ISL) y asignación familiar para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -41,68 +41,6 @@ def parse_clp(value) -> Optional[int]:
         return int(text)
     return None
 
-def extract_asignacion_familiar(reader, workers_data):
-    """
-    Extrae la Asignación Familiar de forma estricta buscando líneas que contengan
-    la palabra CARGA o ASIGNACION junto a un RUT y un monto de tramo válido.
-    """
-    MIN_AMOUNT = 3000
-    MAX_AMOUNT = 25000
-
-    # Inicializar todos en 0 por defecto
-    for rut in workers_data:
-        workers_data[rut]["asig_fam"] = 0
-
-    for page in reader.pages:
-        text = page.extract_text()
-        if not text:
-            continue
-
-        lines = text.split("\n")
-
-        for line in lines:
-            line_upper = line.upper()
-
-            # La línea DEBE hablar de asignación o cargas, y JAMÁS de SIS, Fonasa o AFC
-            if not any(k in line_upper for k in ["ASIGNAC", "CARGA", "REBAJA"]):
-                continue
-            if any(k in line_upper for k in ["SIS", "FONASA", "SALUD", "AFC", "MUTUAL", "ISL"]):
-                continue
-
-            # 1. Buscar RUT en la línea
-            rut_match = RUT_RE.search(line)
-            if not rut_match:
-                continue
-
-            rut = normalize_rut(rut_match.group())
-
-            # 2. Extraer números
-            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
-            if not numbers:
-                continue
-
-            valores = []
-            for n in numbers:
-                val = parse_clp(n)
-                if val:
-                    valores.append(val)
-
-            # 3. Filtrar en el rango de cargas unitarias
-            candidatos = [
-                v for v in valores
-                if MIN_AMOUNT <= v <= MAX_AMOUNT
-            ]
-
-            if not candidatos:
-                continue
-
-            monto = candidatos[-1]
-
-            if rut in workers_data:
-                workers_data[rut]["asig_fam"] = monto
-
-    return workers_data
-
 def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     workers_data = {}
@@ -111,7 +49,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
         text = page.extract_text() or ""
         lines = text.split("\n")
         
-        # 1. Remuneraciones / AFP
+        # 1. Remuneraciones / AFP (Sueldo Imponible y Salud Fonasa)
         if "AFP" in text and "REMUNERACIÓN" in text:
             for line in lines:
                 if RUT_RE.search(line) and "AFP" in line:
@@ -141,7 +79,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                                     "asig_fam": 0
                                 }
 
-        # 2. Detalle de AFP (Cotización y AFC)
+        # 2. Detalle de AFP (Cotización Obligatoria y AFC)
         if "Cotización" in text and ("Seguro Cesantía" in text or "Seguro de Cesantía" in text or "Detalle de Cotizaciones" in text):
             for line in lines:
                 m = RUT_RE.search(line)
@@ -158,13 +96,14 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["afc_trab"] = afc_trab
                             workers_data[rut]["afc_emp"] = afc_emp
                             
+                            # Cálculo Impuesto Único referencial
                             s_imp = workers_data[rut]["sueldo_imponible"]
                             if s_imp >= 1700000:
                                 workers_data[rut]["impto_unico"] = 17573
                             else:
                                 workers_data[rut]["impto_unico"] = 0
 
-        # 3. ISL (Mutual)
+        # 3. ISL (Mutual) por trabajador
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -175,7 +114,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                         if rut in workers_data:
                             workers_data[rut]["isl"] = nums[1]
 
-        # 4. Seguro Social Previsional
+        # 4. Seguro Social Previsional (SIS, Rentabilidad Protegida, Seguro Social)
         if "SEGURO SOCIAL PREVISIONAL" in text or "Seguro Social" in text:
             for line in lines:
                 m = RUT_RE.search(line)
@@ -188,8 +127,18 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Automática de Asignación Familiar
-    workers_data = extract_asignacion_familiar(reader, workers_data)
+        # 5. Detección específica de Asignación Familiar en Anexos IPS
+        if "ASIGNACION" in text.upper() or "ASIGNACIÓN" in text.upper() or "REBAJAS" in text.upper():
+            for line in lines:
+                m = RUT_RE.search(line)
+                if m:
+                    rut = normalize_rut(m.group(1))
+                    nums = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
+                    for n in nums:
+                        val = parse_clp(n)
+                        if val and 3000 <= val <= 25000:
+                            if rut in workers_data:
+                                workers_data[rut]["asig_fam"] = val
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
@@ -203,6 +152,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
     
     ws = wb[SHEET_NAME]
     
+    # Recorremos el Excel buscando las secciones de cada trabajador por su RUT
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
         norm_cell = normalize_rut(cell_val)
@@ -210,6 +160,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
         if norm_cell:
             for _, rec in df.iterrows():
                 if normalize_rut(rec["rut"]) == norm_cell:
+                    # Buscamos la fila correspondiente al mes objetivo dentro de la sección del trabajador
                     for r_sub in range(row, row + 16):
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
                         if TARGET_MONTH in mes_val:
@@ -228,7 +179,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 4. Asignación Familiar (Columna N / 14)
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
-                            # 5. Aportes Patronales exactos (Segunda tabla)
+                            # 5. Aportes Patronales exactos (Segunda tabla de aportes)
                             ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
                             ws.cell(r_sub, 17).value = rec["afc_emp"]   # AFC Empleador (Columna Q)
                             ws.cell(r_sub, 18).value = rec["isl"]       # ISL / Mutual (Columna R)
@@ -261,7 +212,7 @@ if pdf_file and template_file:
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
                 data=final_excel,
-                file_name="Remuneraciones_Cliente_Definitivo.xlsx",
+                file_name="Remuner_Cliente_Actualizado.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
