@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, impuesto único, aportes patronales (SIS, AFC, ISL) y te permitirá verificar la **Asignación Familiar** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales (SIS, AFC, ISL) y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -75,8 +75,8 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                                     "isl": 0,
                                     "rent_prot": 0,
                                     "s_social": 0,
-                                    "impto_unico": 0,
-                                    "asig_fam": 0
+                                    "asig_fam": 0,
+                                    "bono": 0
                                 }
 
         # 2. Detalle de AFP (Cotización Obligatoria y AFC)
@@ -95,13 +95,6 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["cotiz_afp"] = cotiz_afp
                             workers_data[rut]["afc_trab"] = afc_trab
                             workers_data[rut]["afc_emp"] = afc_emp
-                            
-                            # Cálculo Impuesto Único referencial
-                            s_imp = workers_data[rut]["sueldo_imponible"]
-                            if s_imp >= 1700000:
-                                workers_data[rut]["impto_unico"] = 17573
-                            else:
-                                workers_data[rut]["impto_unico"] = 0
 
         # 3. ISL (Mutual) por trabajador
         if "Instituto de Seguridad Laboral" in text or "ISL" in text:
@@ -127,7 +120,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-        # 5. Detección automática de Asignación Familiar en Anexos IPS / Cargas
+        # 5. Detección automática inicial de Asignación Familiar
         if "ASIGNACION" in text.upper() or "ASIGNACIÓN" in text.upper() or "REBAJAS" in text.upper() or "TRAMO" in text.upper():
             for line in lines:
                 m = RUT_RE.search(line)
@@ -142,10 +135,10 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
 
     df = pd.DataFrame(list(workers_data.values()))
     if df.empty:
-        df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "impto_unico", "asig_fam"])
+        df = pd.DataFrame(columns=["rut", "sueldo_imponible", "salud_fonasa", "cotiz_afp", "afc_trab", "sis", "afc_emp", "isl", "rent_prot", "s_social", "asig_fam", "bono"])
     return df
 
-def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict) -> bytes:
+def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, bonos_dict: dict) -> bytes:
     wb = load_workbook(io.BytesIO(template_bytes))
     if SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel del cliente.")
@@ -171,18 +164,18 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict) -
                             salud_val = rec["salud_fonasa"]
                             ws.cell(r_sub, 3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
-                            # 3. Impuesto Único (Columna L / 12)
-                            ws.cell(r_sub, 12).value = rec["impto_unico"]
+                            # 3. Asignación Familiar -> Columna K (11)
+                            ws.cell(r_sub, 11).value = cargas_dict.get(norm_cell, rec["asig_fam"])
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Asignación validada
-                            ws.cell(r_sub, 14).value = cargas_dict.get(norm_cell, rec["asig_fam"])
+                            # 4. Bonos -> Columna L (12)
+                            ws.cell(r_sub, 12).value = bonos_dict.get(norm_cell, 0)
                             
-                            # 5. Aportes Patronales exactos (Segunda tabla de aportes)
-                            ws.cell(r_sub, 16).value = rec["sis"]       # SIS (Columna P)
-                            ws.cell(r_sub, 17).value = rec["afc_emp"]   # AFC Empleador (Columna Q)
-                            ws.cell(r_sub, 18).value = rec["isl"]       # ISL / Mutual (Columna R)
-                            ws.cell(r_sub, 19).value = rec["rent_prot"] # Rent. Protegida (Columna S)
-                            ws.cell(r_sub, 20).value = rec["s_social"]  # Seguro Social (Columna T)
+                            # 5. Aportes Patronales exactos
+                            ws.cell(r_sub, 14).value = rec["sis"]       # SIS -> Columna N (14)
+                            ws.cell(r_sub, 15).value = rec["afc_emp"]   # AFC Empleador -> Columna O (15)
+                            ws.cell(r_sub, 16).value = rec["isl"]       # ISL / Mutual -> Columna P (16)
+                            ws.cell(r_sub, 17).value = rec["s_social"]  # Seguro Social -> Columna Q (17)
+                            ws.cell(r_sub, 18).value = rec["rent_prot"] # S. Social 0,1% -> Columna R (18)
                             break
                             
     output = io.BytesIO()
@@ -203,28 +196,44 @@ if pdf_file and template_file:
         st.subheader("📊 Datos Extraídos para el Cliente:")
         st.dataframe(df_extracted, use_container_width=True)
         
-        # Alerta y Panel rápido de verificación de Asignación Familiar
-        st.warning("⚠️ **Verificación de Asignación Familiar (Agosto):** Revisa si algún trabajador registra cargas este mes y ajusta su monto si es necesario antes de generar el Excel definitivo.")
+        # Panel interactivo de Cargas y Bonos con texto/números libres
+        st.warning("⚠️ **Control de Agosto (Asignación Familiar y Bonos):** Ingresa o ajusta libremente los montos para cada trabajador según corresponda.")
         
         cargas_dict = {}
+        bonos_dict = {}
+        
         for idx, row in df_extracted.iterrows():
             r = row["rut"]
-            auto_val = int(row["asig_fam"])
-            # Solo mostramos el input si detectó algo o para que puedas verificar rápido
-            val_carga = st.number_input(
-                label=f"Asignación Familiar para RUT: {r}",
-                min_value=0,
-                max_value=50000,
-                value=auto_val,
-                step=1000,
-                key=f"carga_verif_{r}"
-            )
-            cargas_dict[r] = val_carga
-            df_extracted.loc[idx, "asig_fam"] = val_carga
+            auto_carga = int(row["asig_fam"])
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                val_carga = st.number_input(
+                    label=f"Asig. Familiar (RUT: {r})",
+                    min_value=0,
+                    max_value=1000000,
+                    value=auto_carga,
+                    step=1,  # Permite ingresar cualquier monto exacto sin saltos forzados
+                    key=f"carga_lib_{r}"
+                )
+                cargas_dict[r] = val_carga
+            
+            with col2:
+                val_bono = st.number_input(
+                    label=f"Bono Manual (RUT: {r})",
+                    min_value=0,
+                    max_value=10000000,
+                    value=0,
+                    step=1,  # Permite escribir el número exacto del bono
+                    key=f"bono_lib_{r}"
+                )
+                bonos_dict[r] = val_bono
+            
+            st.markdown("---")
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
-            final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict)
-            st.success("¡Planilla del cliente generada con éxito absoluto y SIS completo!")
+            final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
+            st.success("¡Planilla generada con éxito absoluto y datos personalizados!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
