@@ -43,8 +43,8 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar buscando de forma directa en las páginas que contengan
-    los conceptos de Asignación, Rebajas y la columna Monto.
+    Extrae la Asignación Familiar escaneando todo el PDF en busca de líneas que contengan un RUT
+    y un valor monetario unitario exacto dentro del rango de cargas familiares (3.000 a 25.000).
     """
     MIN_AMOUNT = 3000
     MAX_AMOUNT = 25000
@@ -58,61 +58,42 @@ def extract_asignacion_familiar(reader, workers_data):
         if not text:
             continue
 
-        text_upper = text.upper()
+        lines = text.split("\n")
 
-        # Verificamos si la página contiene los términos clave de asignación familiar y la columna monto
-        if ("ASIGNACIÓN" in text_upper or "ASIGNACION" in text_upper or "REBAJAS" in text_upper) and "MONTO" in text_upper:
-            lines = text.split("\n")
+        for line in lines:
+            # 1. Buscar RUT en la línea
+            rut_match = RUT_RE.search(line)
+            if not rut_match:
+                continue
 
-            for line in lines:
-                # 1. Buscar RUT en la línea
-                rut_match = RUT_RE.search(line)
-                if not rut_match:
-                    continue
+            rut = normalize_rut(rut_match.group())
 
-                rut = normalize_rut(rut_match.group())
+            # 2. Extraer todos los números de la línea
+            numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
+            if not numbers:
+                continue
 
-                # 2. Extraer todos los números de la línea
-                numbers = re.findall(r"\b\d{1,3}(?:\.\d{3})+\b|\b\d+\b", line)
-                if not numbers:
-                    continue
+            values = []
+            for n in numbers:
+                val = parse_clp(n)
+                if val:
+                    values.append(val)
 
-                values = []
-                for n in numbers:
-                    val = parse_clp(n)
-                    if val:
-                        values.append(val)
+            # 3. Filtrar estrictamente montos en el rango unitario de asignación familiar
+            posibles = [
+                v for v in values
+                if MIN_AMOUNT <= v <= MAX_AMOUNT
+            ]
 
-                # 3. Filtrar estrictamente montos en el rango unitario de asignación familiar (3.000 a 25.000)
-                posibles = [
-                    v for v in values
-                    if MIN_AMOUNT <= v <= MAX_AMOUNT
-                ]
+            if not posibles:
+                continue
 
-                if not posibles:
-                    continue
+            # 4. Seleccionamos el monto válido (el último o el candidato de la carga)
+            monto = posibles[-1]
 
-                # 4. El monto de la asignación familiar correspondiente
-                monto = posibles[-1]
-
-                # 5. Asignar al trabajador si existe en el registro
-                if rut in workers_data:
-                    workers_data[rut]["asig_fam"] = monto
-                else:
-                    workers_data[rut] = {
-                        "rut": rut,
-                        "sueldo_imponible": 0,
-                        "salud_fonasa": 0,
-                        "cotiz_afp": 0,
-                        "afc_trab": 0,
-                        "sis": 0,
-                        "afc_emp": 0,
-                        "isl": 0,
-                        "rent_prot": 0,
-                        "s_social": 0,
-                        "impto_unico": 0,
-                        "asig_fam": monto
-                    }
+            # 5. Asignar al trabajador si existe en el registro principal
+            if rut in workers_data:
+                workers_data[rut]["asig_fam"] = monto
 
     return workers_data
 
@@ -201,7 +182,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica de Asignación Familiar
+    # 5. Extracción Dinámica de Asignación Familiar Directa por Rango
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -238,7 +219,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica con filtro de monto
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica por rango directo
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
