@@ -12,7 +12,7 @@ st.title("📊 Asesorías Contables Linares")
 st.subheader("Control de Remuneraciones y Previred - Multicliente")
 
 st.markdown("""
-Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales fijos sin desfase y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
+Sube el archivo PDF de Previred de tu cliente y su respectiva **plantilla Excel corporativa**. El sistema procesará automáticamente sueldos, cotizaciones, aportes patronales con alineación perfecta de columnas y te permitirá ingresar o ajustar manualmente la **Asignación Familiar** y los **Bonos** para el mes de **Agosto**.
 """)
 
 SHEET_NAME = "SUELDOS 2026"
@@ -134,7 +134,6 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["s_social"] = nums[2]
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
-                            # Calculamos o asignamos el 0.1% proporcional si corresponde
                             s_imp = workers_data[rut]["sueldo_imponible"]
                             workers_data[rut]["s_social_01"] = int(round(s_imp * 0.001)) if s_imp > 0 else 0
 
@@ -165,13 +164,13 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
     
     ws = wb[SHEET_NAME]
     
-    # Columnas fijas (1-based) para aportes patronales sin desfase
-    COL_SIS = 14          # N
-    COL_AFC_EMP = 15      # O
-    COL_ISL = 16          # P
-    COL_RENT_PROT = 17    # Q
-    COL_S_SOCIAL = 18     # R
-    COL_S_SOCIAL_01 = 19  # S
+    # Columnas fijas reales corregidas (1-based) para aportes patronales sin desfase
+    COL_SIS = 15          # O
+    COL_AFC_EMP = 16      # P
+    COL_ISL = 17          # Q
+    COL_RENT_PROT = 18    # R
+    COL_S_SOCIAL = 19     # S
+    COL_S_SOCIAL_01 = 20  # T
 
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
@@ -198,7 +197,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                             # 4. Bonos -> Columna L (12)
                             ws.cell(row=r_sub, column=12).value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # 5. Aportes Patronales estrictos y fijos sin desfase
+                            # 5. Aportes Patronales estrictos en columnas O, P, Q, R, S, T
                             ws.cell(row=r_sub, column=COL_SIS).value = safe_int(rec.get("sis"))
                             ws.cell(row=r_sub, column=COL_AFC_EMP).value = safe_int(rec.get("afc_emp"))
                             ws.cell(row=r_sub, column=COL_ISL).value = safe_int(rec.get("isl"))
@@ -262,7 +261,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y columnas fijas sin desfase!")
+            st.success("¡Planilla generada con éxito absoluto y columnas alineadas en O, P, Q, R, S, T!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
