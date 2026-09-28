@@ -43,7 +43,7 @@ def parse_clp(value) -> Optional[int]:
 
 def safe_int(value):
     try:
-        if value is None:
+        if value is None or str(value).strip() == "":
             return 0
         return int(float(value))
     except:
@@ -163,14 +163,6 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
         raise ValueError(f"No se encontró la pestaña '{SHEET_NAME}' en el Excel del cliente.")
     
     ws = wb[SHEET_NAME]
-    
-    # Columnas fijas reales corregidas (1-based) para aportes patronales sin desfase
-    COL_SIS = 15          # O
-    COL_AFC_EMP = 16      # P
-    COL_ISL = 17          # Q
-    COL_RENT_PROT = 18    # R
-    COL_S_SOCIAL = 19     # S
-    COL_S_SOCIAL_01 = 20  # T
 
     for row in range(1, ws.max_row + 1):
         cell_val = ws.cell(row, 2).value
@@ -182,28 +174,28 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame, cargas_dict: dict, b
                     for r_sub in range(row, row + 16):
                         mes_val = str(ws.cell(r_sub, 1).value or "").strip().upper()
                         if TARGET_MONTH in mes_val:
-                            # 1. Sueldo Bruto/Imponible -> Columna B (2)
-                            ws.cell(row=r_sub, column=2).value = safe_int(rec["sueldo_imponible"])
+                            # 1. Sueldo Bruto/Imponible -> Columna B
+                            ws[f"B{r_sub}"].value = safe_int(rec["sueldo_imponible"])
                             
                             # 2. Cotización Previsional (Columna C) -> Fórmula exacta
                             cotiz_val = safe_int(rec["cotiz_afp"])
                             afc_t_val = safe_int(rec["afc_trab"])
                             salud_val = safe_int(rec["salud_fonasa"])
-                            ws.cell(row=r_sub, column=3).value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
+                            ws[f"C{r_sub}"].value = f"={cotiz_val}+{afc_t_val}+{salud_val}-D{r_sub}"
                             
-                            # 3. Asignación Familiar -> Columna K (11)
-                            ws.cell(row=r_sub, column=11).value = safe_int(cargas_dict.get(norm_cell, rec["asig_fam"]))
+                            # 3. Asignación Familiar -> Columna K
+                            ws[f"K{r_sub}"].value = safe_int(cargas_dict.get(norm_cell, rec["asig_fam"]))
                             
-                            # 4. Bonos -> Columna L (12)
-                            ws.cell(row=r_sub, column=12).value = safe_int(bonos_dict.get(norm_cell, 0))
+                            # 4. Bonos -> Columna L
+                            ws[f"L{r_sub}"].value = safe_int(bonos_dict.get(norm_cell, 0))
                             
-                            # 5. Aportes Patronales estrictos en columnas O, P, Q, R, S, T
-                            ws.cell(row=r_sub, column=COL_SIS).value = safe_int(rec.get("sis"))
-                            ws.cell(row=r_sub, column=COL_AFC_EMP).value = safe_int(rec.get("afc_emp"))
-                            ws.cell(row=r_sub, column=COL_ISL).value = safe_int(rec.get("isl"))
-                            ws.cell(row=r_sub, column=COL_RENT_PROT).value = safe_int(rec.get("rent_prot"))
-                            ws.cell(row=r_sub, column=COL_S_SOCIAL).value = safe_int(rec.get("s_social"))
-                            ws.cell(row=r_sub, column=COL_S_SOCIAL_01).value = safe_int(rec.get("s_social_01"))
+                            # 5. Aportes Patronales usando LETRAS EXACTAS en celdas corporativas reales
+                            ws[f"R{r_sub}"].value = safe_int(rec.get("sis"))         # SIS -> R
+                            ws[f"S{r_sub}"].value = safe_int(rec.get("afc_emp"))     # AFC Empleador -> S
+                            ws[f"T{r_sub}"].value = safe_int(rec.get("isl"))         # ISL / Mutual -> T
+                            ws[f"U{r_sub}"].value = safe_int(rec.get("rent_prot"))   # Rent. Protegida -> U
+                            ws[f"V{r_sub}"].value = safe_int(rec.get("s_social"))    # S. Social -> V
+                            ws[f"W{r_sub}"].value = safe_int(rec.get("s_social_01")) # S. Social 0,1% -> W
                             break
                             
     output = io.BytesIO()
@@ -261,7 +253,7 @@ if pdf_file and template_file:
         
         if st.button("🚀 Rellenar Planilla Oficial del Cliente", type="primary"):
             final_excel = write_to_excel(template_file.getvalue(), df_extracted, cargas_dict, bonos_dict)
-            st.success("¡Planilla generada con éxito absoluto y columnas alineadas en O, P, Q, R, S, T!")
+            st.success("¡Planilla generada con éxito absoluto y celdas R a W sincronizadas!")
             
             st.download_button(
                 label="📥 Descargar Libro de Remuneraciones del Cliente",
