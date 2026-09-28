@@ -43,11 +43,11 @@ def parse_clp(value) -> Optional[int]:
 
 def extract_asignacion_familiar(reader, workers_data):
     """
-    Extrae la Asignación Familiar buscando de forma inteligente en todo el PDF
-    cualquier línea con RUT y un monto válido en el rango de cargas (3.000 a 50.000).
+    Extrae la Asignación Familiar exigiendo que la página o línea pertenezca
+    estrictamente al anexo de cargas, evitando confundirse con AFC o aportes patronales.
     """
     MIN_AMOUNT = 3000
-    MAX_AMOUNT = 50000
+    MAX_AMOUNT = 25000
 
     # Inicializar todos en 0 por defecto
     for rut in workers_data:
@@ -58,9 +58,21 @@ def extract_asignacion_familiar(reader, workers_data):
         if not text:
             continue
 
+        text_upper = text.upper()
+
+        # FILTRO ESTRICTO: Solo procesar páginas que tengan relación directa con Cargas / Asignación Familiar
+        if not any(k in text_upper for k in ["ASIGNACIÓN", "ASIGNACION", "FAMILIAR", "TRAMO", "SIMPLE"]):
+            continue
+
         lines = text.split("\n")
 
         for line in lines:
+            line_upper = line.upper()
+            
+            # La línea también debe pertenecer a la sección de cargas (evita tablas de aportes patronales)
+            if not any(k in line_upper for k in ["ASIGNACIÓN", "ASIGNACION", "TRAMO", "SIMPLE", "INVALIDA", "MATERNAL", "MONTO", "REBAJAS"]) and not RUT_RE.search(line):
+                continue
+
             # 1. Buscar RUT en la línea
             rut_match = RUT_RE.search(line)
             if not rut_match:
@@ -79,8 +91,7 @@ def extract_asignacion_familiar(reader, workers_data):
                 if val:
                     values.append(val)
 
-            # 3. Filtrar montos dentro del rango exclusivo de asignación familiar
-            # Excluimos valores que correspondan a sueldos imponibles o cotizaciones grandes
+            # 3. Filtrar montos dentro del rango exclusivo de asignación familiar unitaria
             posibles = [
                 v for v in values
                 if MIN_AMOUNT <= v <= MAX_AMOUNT
@@ -89,14 +100,12 @@ def extract_asignacion_familiar(reader, workers_data):
             if not posibles:
                 continue
 
-            # 4. El monto de la asignación familiar es el valor válido encontrado en la línea
+            # 4. El monto real de la asignación familiar
             monto = posibles[-1]
 
-            # 5. Asignar al trabajador si corresponde
+            # 5. Asignar al trabajador
             if rut in workers_data:
-                # Si ya tiene un monto menor o 0, asignamos el real de cargas
-                if workers_data[rut]["asig_fam"] == 0:
-                    workers_data[rut]["asig_fam"] = monto
+                workers_data[rut]["asig_fam"] = monto
             else:
                 workers_data[rut] = {
                     "rut": rut,
@@ -200,7 +209,7 @@ def extract_pdf_data(pdf_bytes: bytes) -> pd.DataFrame:
                             workers_data[rut]["rent_prot"] = nums[3]
                             workers_data[rut]["sis"] = nums[4]
 
-    # 5. Extracción Dinámica y Pro de Asignación Familiar
+    # 5. Extracción Dinámica y Pro de Asignación Familiar con Filtro Estricto de Cargas
     workers_data = extract_asignacion_familiar(reader, workers_data)
 
     df = pd.DataFrame(list(workers_data.values()))
@@ -237,7 +246,7 @@ def write_to_excel(template_bytes: bytes, df: pd.DataFrame) -> bytes:
                             # 3. Impuesto Único (Columna L / 12)
                             ws.cell(r_sub, 12).value = rec["impto_unico"]
                             
-                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro
+                            # 4. Asignación Familiar (Columna N / 14) -> Dinámica pro filtrada
                             ws.cell(r_sub, 14).value = rec["asig_fam"]
                             
                             # 5. Aportes Patronales exactos (Segunda tabla)
@@ -262,7 +271,7 @@ if pdf_file and template_file:
     
     try:
         df_extracted = extract_pdf_data(pdf_file.getvalue())
-        st.subheader("Datos Extraídos con Asignación Familiar Dinámica Corregida:")
+        st.subheader("Datos Extraídos con Filtro Estricto de Cargas:")
         st.dataframe(df_extracted, use_container_width=True)
         
         if st.button("🚀 Rellenar Planilla Oficial Definitiva", type="primary"):
